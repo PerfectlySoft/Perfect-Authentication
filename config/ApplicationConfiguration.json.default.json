@@ -1,0 +1,6 @@
+{
+	"facebookAppID": "---",
+	"facebookSecret": "---",
+	"edpointAfterAuth": "http://localhost:8181/auth/response",
+	"redirectAfterAuth":"http://localhost:8181/"
+}
