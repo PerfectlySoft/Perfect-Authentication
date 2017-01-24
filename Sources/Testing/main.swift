@@ -20,32 +20,33 @@ import PerfectLib
 import PerfectHTTP
 import PerfectHTTPServer
 import PerfectSession
+import AuthProviders
 
+// NOTE: Facebook config vars are in /config/ApplictionConfiguration.json
+// Then they are loaded here:
 config()
 
+// Configuration of Session
 SessionConfig.name = "TestingAuthentication"
 SessionConfig.idle = 3600
-
-// Optional
 SessionConfig.cookieDomain = "localhost"
 SessionConfig.IPAddressLock = false
 SessionConfig.userAgentLock = false
 SessionConfig.CSRF.checkState = false
 SessionConfig.CORS.enabled = false
 
-let port1 = 8181
-
+// Configure Server, and routes.
 let confData = [
 	"servers": [
 		[
 			"name":"localhost",
-			"port":port1,
+			"port":8181,
 			"routes":[
 				["method":"get", "uri":"/", "handler":Handlers.main],
 
-				["method":"get", "uri":"/to/facebook", "handler":Handlers.sendToFacebook],
+				["method":"get", "uri":"/to/facebook", "handler":Facebook.sendToFacebook],
 
-				["method":"get", "uri":"/auth/response", "handler":Handlers.authResponse],
+				["method":"get", "uri":"/auth/response", "handler":Facebook.authResponse],
 				["method":"get", "uri":"/**", "handler":PerfectHTTPServer.HTTPHandler.staticFiles,
 				 "documentRoot":"./webroot",
 				 "allowResponseFilters":true]
