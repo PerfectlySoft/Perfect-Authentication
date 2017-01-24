@@ -1,0 +1,222 @@
+/* ==========================================================================
+ 1. Colour Palette
+ ========================================================================== */
+
+.blu		{color: #005978;}
+
+.blu_bg		{background-color: #005978;color: #fff;}
+
+a, a:visited {
+	color: #e43c23
+}
+
+
+#loghead th { font-size: .8em; }
+#logview td { font-size: .8em; vertical-align: top; padding-bottom: .5em; padding-top: .5em }
+
+/*warn, info, debug, error, critical*/
+
+#logview .info { color: green }
+#logview .debug { color: yellowgreen }
+#logview .warn { color: orange }
+#logview .error { color: red }
+#logview .critical { color: black }
+
+#logtypebar > div { font-weight: bold; font-size: .85em; text-align: center; cursor: pointer; border-radius: 3px; }
+
+#logtypebar > .linfo { background-color: green;  color: white; }
+#logtypebar > .ldebug { background-color: yellowgreen;  }
+#logtypebar > .lwarn { background-color: orange;  }
+#logtypebar > .lerror { background-color: red;  color: white; }
+#logtypebar > .lcritical { background-color: black; color: white;  }
+#logtypebar > .lall { background-color: lightgrey;  }
+
+.filterprop { cursor: pointer }
+
+.largericons {
+	font-size: 1.4em
+}
+
+/* ==========================================================================
+ 2. General Overrides
+ ========================================================================== */
+@font-face {
+    font-family: 'sinkin_sans_xlight';
+    src: url('/assets/fonts/sinkinsans/SinkinSans-200XLight-webfont.eot');
+    src: url('/assets/fonts/sinkinsans/SinkinSans-200XLight-webfont.eot?#iefix') format('embedded-opentype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-200XLight-webfont.woff') format('woff'),
+         url('/assets/fonts/sinkinsans/SinkinSans-200XLight-webfont.ttf') format('truetype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-200XLight-webfont.svg#sinkin_sans200_x_light') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'sinkin_sans_light';
+    src: url('/assets/fonts/sinkinsans/SinkinSans-300Light-webfont.eot');
+    src: url('/assets/fonts/sinkinsans/SinkinSans-300Light-webfont.eot?#iefix') format('embedded-opentype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-300Light-webfont.woff') format('woff'),
+         url('/assets/fonts/sinkinsans/SinkinSans-300Light-webfont.ttf') format('truetype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-300Light-webfont.svg#sinkin_sans300_light') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'sinkin_sans_italic';
+    src: url('/assets/fonts/sinkinsans/SinkinSans-400Italic-webfont.eot');
+    src: url('/assets/fonts/sinkinsans/SinkinSans-400Italic-webfont.eot?#iefix') format('embedded-opentype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-400Italic-webfont.woff') format('woff'),
+         url('/assets/fonts/sinkinsans/SinkinSans-400Italic-webfont.ttf') format('truetype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-400Italic-webfont.svg#sinkin_sans400_italic') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'sinkin_sans_regular';
+    src: url('/assets/fonts/sinkinsans/SinkinSans-400Regular-webfont.eot');
+    src: url('/assets/fonts/sinkinsans/SinkinSans-400Regular-webfont.eot?#iefix') format('embedded-opentype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-400Regular-webfont.woff') format('woff'),
+         url('/assets/fonts/sinkinsans/SinkinSans-400Regular-webfont.ttf') format('truetype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-400Regular-webfont.svg#sinkin_sans400_regular') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'sinkin_sans_medium';
+    src: url('/assets/fonts/sinkinsans/SinkinSans-500Medium-webfont.eot');
+    src: url('/assets/fonts/sinkinsans/SinkinSans-500Medium-webfont.eot?#iefix') format('embedded-opentype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-500Medium-webfont.woff') format('woff'),
+         url('/assets/fonts/sinkinsans/SinkinSans-500Medium-webfont.ttf') format('truetype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-500Medium-webfont.svg#sinkin_sans500_medium') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'sinkin_sans500_medium_italic';
+    src: url('/assets/fonts/sinkinsans/SinkinSans-500MediumItalic-webfont.eot');
+    src: url('/assets/fonts/sinkinsans/SinkinSans-500MediumItalic-webfont.eot?#iefix') format('embedded-opentype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-500MediumItalic-webfont.woff') format('woff'),
+         url('/assets/fonts/sinkinsans/SinkinSans-500MediumItalic-webfont.ttf') format('truetype'),
+         url('/assets/fonts/sinkinsans/SinkinSans-500MediumItalic-webfont.svg#sinkin_sans500_medium_italic') format('svg');
+    font-weight: normal;
+    font-style: normal;
+}
+
+body {
+	font-family:'sinkin_sans_light', sans-serif;
+	font-size: 12px;
+}
+
+#leftMenu ul {
+	list-style: none;
+	font-size: 9px;
+	font-family: "sinkin_sans_medium"
+}
+
+a {
+	text-decoration: none;
+}
+
+/* ==========================================================================
+ 3. Mastheads
+ ========================================================================== */
+#masthead {
+/*	background-color: rgba(0, 128, 198, 0.8);*/
+}
+#masthead h1 {
+	font-size: 24px;
+	padding-top: 10px;
+	padding-bottom: 10px;
+	margin: 0;
+}
+
+#footer {
+	background-color: rgba(0, 128, 198, 0.4);
+	font-size: 11px;
+}
+
+
+
+/* ==========================================================================
+ 4. Header Styles
+ ========================================================================== */
+.top-bottom
+{
+	color: #fff;
+	/* Permalink - use to edit and share this gradient: http://colorzilla.com/gradient-editor/#404040+0,131314+100 */
+	background: #404040; /* Old browsers */
+	background: -moz-linear-gradient(top,  #404040 0%, #131314 100%); /* FF3.6-15 */
+	background: -webkit-linear-gradient(top,  #404040 0%,#131314 100%); /* Chrome10-25,Safari5.1-6 */
+	background: linear-gradient(to bottom,  #404040 0%,#131314 100%); /* W3C, IE10+, FF16+, Chrome26+, Opera12+, Safari7+ */
+}
+
+
+
+/* ==========================================================================
+ 5. Custom icons
+ ========================================================================== */
+
+
+/* ==========================================================================
+ 6. Search Form
+ ========================================================================== */
+a.button,
+button
+{
+	background-color: rgba(0,0,0,0.3);
+	margin-right: 1em;
+	margin-bottom: 0.6em;
+}
+
+button:hover,
+button:active,
+a.button:hover,
+a.button:active
+{
+	background-color: rgba(0,0,0,0.6);
+}
+
+
+/* ==========================================================================
+ 7. Custom Animations
+ ========================================================================== */
+ 
+/* ==========================================================================
+ 8. Media Queries
+ ========================================================================== */
+
+@-moz-document url-prefix()
+{
+	
+
+}
+
+@media only screen and (max-width: 960px)
+{
+	
+}
+
+@media only screen and (max-width: 720px)
+{
+
+}
+
+@media only screen and (max-width: 620px)
+{
+	
+}
+
+@media only screen and (max-width: 480px)
+{	
+
+}
+
+
+@media only screen and (max-width: 400px)
+{
+	
+}
+
+@media only screen and (max-width: 320px)
+{
+
+}
