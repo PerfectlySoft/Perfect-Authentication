@@ -78,11 +78,11 @@ public class HTTPHeaderParser {
 
 	/// The HTTP response code, e.g.,, HTTP/1.1 200 OK -> let status = "OK"
 	public var status: String {
-		get { return _status! }
+		get { return _status ?? "" }
 	}
 
 	/// The HTTP response code, e.g.,, HTTP/1.1 200 OK -> let version = "HTTP/1.1"
 	public var version: String {
-		get { return _version! }
+		get { return _version ?? "" }
 	}
 }

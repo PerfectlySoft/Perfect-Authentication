@@ -72,9 +72,10 @@ open class OAuth2 {
                         "client_secret": clientSecret,
                         "redirect_uri": authorizationCode.redirectURL,
                         "code": authorizationCode.code]
-
+		print("Exchange to: \(tokenURL)")
+		print(urlencode(dict: postBody))
 		// using Perfect's CURL instead
-		let (_, data, _, _) = makeRequest(.post, tokenURL, body: urlencode(dict: postBody))
+		let (_, data, _, _) = makeRequest(.post, tokenURL, body: urlencode(dict: postBody), encoding: "form")
         guard let token = OAuth2Token(json: data) else {
 			print("WTF? \(data)")
             // Facebook doesn't do this error properly... probably have to override this

@@ -1,13 +1,24 @@
 //
 //  Facebook.swift
-//  Turnstile
+//	Perfect Authentication / Auth Providers
+//  Inspired by Turnstile (Edward Jiang)
 //
-//  Created by Edward Jiang on 8/8/16.
+//  Created by Jonathan Guthrie on 2017-01-24
 //
+//
+//===----------------------------------------------------------------------===//
+//
+// This source file is part of the Perfect.org open source project
+//
+// Copyright (c) 2015 - 2016 PerfectlySoft Inc. and the Perfect project authors
+// Licensed under Apache License v2.0
+//
+// See http://perfect.org/licensing.html for license information
+//
+//===----------------------------------------------------------------------===//
 //
 
 import Foundation
-import OAuth2
 import PerfectHTTP
 import TurnstileCrypto
 import PerfectSession
@@ -17,7 +28,7 @@ public struct FacebookConfig {
 	public static var secret = ""
 
 	/// Where should Facebook redirect to after Authorization
-	public static var edpointAfterAuth = ""
+	public static var endpointAfterAuth = ""
 
 	/// Where should the app redirect to after Authorization & Token Exchange
 	public static var redirectAfterAuth = ""
@@ -70,11 +81,11 @@ public class Facebook: OAuth2 {
 	}
 
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: FacebookConfig.edpointAfterAuth)
+		return try exchange(request: request, state: state, redirectURL: FacebookConfig.endpointAfterAuth)
 	}
 
 	public func getLoginLink(state: String, scopes: [String] = []) -> String {
-		return getLoginLink(redirectURL: FacebookConfig.edpointAfterAuth, state: state, scopes: scopes)
+		return getLoginLink(redirectURL: FacebookConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
 
 
@@ -136,7 +147,7 @@ public class Facebook: OAuth2 {
 
 
 
-	public static func sendToFacebook(data: [String:Any]) throws -> RequestHandler {
+	public static func sendToProvider(data: [String:Any]) throws -> RequestHandler {
 		let rand = URandom()
 
 		return {

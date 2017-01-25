@@ -27,7 +27,8 @@ extension OAuth2 {
 	public func makeRequest(
 		_ method: HTTPMethod,
 		_ url: String,
-		body: String = ""
+		body: String = "",
+		encoding: String = "JSON"
 		) -> (Int, [String:Any], [String:Any], HTTPHeaderParser) {
 
 		let curlObject = CURL(url: url)
@@ -41,7 +42,13 @@ extension OAuth2 {
 			curlObject.setOption(CURLOPT_POST, int: 1)
 			curlObject.setOption(CURLOPT_POSTFIELDSIZE, int: byteArray.count)
 			curlObject.setOption(CURLOPT_COPYPOSTFIELDS, v: UnsafeMutablePointer(mutating: byteArray))
-			curlObject.setOption(CURLOPT_HTTPHEADER, s: "Content-Type: application/json")
+
+			if encoding == "form" {
+				curlObject.setOption(CURLOPT_HTTPHEADER, s: "Content-Type: application/x-www-form-urlencoded")
+			} else {
+				curlObject.setOption(CURLOPT_HTTPHEADER, s: "Content-Type: application/json")
+			}
+
 		default: //.get :
 			curlObject.setOption(CURLOPT_HTTPGET, int: 1)
 		}
@@ -100,7 +107,6 @@ extension OAuth2 {
 			}
 			return (http.code, data, raw, http)
 		} catch {
-			print(error)
 			return (http.code, [:], raw, http)
 		}
 	}
