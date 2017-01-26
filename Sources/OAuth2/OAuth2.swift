@@ -12,8 +12,7 @@ import PerfectHTTP
 
 /**
  OAuth 2 represents the base API Client for an OAuth 2 server that implements the
- authorization code grant type. This is the typical redirect based login flow
- you see on .
+ authorization code grant type. This is the typical redirect based login flow.
  
  Since OAuth doesn't define token validation, implementing it is up to a subclass.
  */
@@ -29,12 +28,6 @@ open class OAuth2 {
     
     /// The Token Endpoint of the OAuth 2 Server
     public let tokenURL: String
-    
-    /// We don't want URLSessions to store cookies, so we have to generate a new one for each request.
-//    public var urlSession: HTTPClient {
-//        return _urlSession()
-//    }
-
     
     /// Creates the OAuth 2 client
     public init(clientID: String, clientSecret: String, authorizationURL: URL, tokenURL: String) {
@@ -72,11 +65,9 @@ open class OAuth2 {
                         "client_secret": clientSecret,
                         "redirect_uri": authorizationCode.redirectURL,
                         "code": authorizationCode.code]
-		// using Perfect's CURL instead
 		let (_, data, _, _) = makeRequest(.post, tokenURL, body: urlencode(dict: postBody), encoding: "form")
         guard let token = OAuth2Token(json: data) else {
 			print("WTF? \(data)")
-            // Facebook doesn't do this error properly... probably have to override this
             if let error = OAuth2Error(json: data) {
                 throw error
             } else {
@@ -104,22 +95,9 @@ open class OAuth2 {
     // TODO: add refresh token support
 }
 
-//public extension Realm where Self: OAuth2 {
-//    public func authenticate(authorizationCodeCallbackURL url: String, state: String) throws -> Account {
-//        let token = try exchange(authorizationCodeCallbackURL: url, state: state)
-//        return try self.authenticate(credentials: token.accessToken)
-//    }
-//    
-//    public func authenticate(authorizationCode: AuthorizationCode) throws -> Account {
-//        let token = try exchange(authorizationCode: authorizationCode)
-//        return try self.authenticate(credentials: token.accessToken)
-//    }
-//}
-
 extension URLComponents {
     var queryDictionary: [String: String] {
-        // URLQueryItems are messed up on Linux, so we'll do this instead:
-        
+
         var result = [String: String]()
         
         guard let components = query?.components(separatedBy: "&") else {
@@ -141,7 +119,6 @@ extension URLComponents {
 
 extension URLComponents {
     mutating func setQueryItems(dict: [String: String]) {
-        // URLQueryItems are messed up on Linux, so we'll do this instead:
         query = dict.map { (key, value) in
             return key + "=" + value
             }.joined(separator: "&")

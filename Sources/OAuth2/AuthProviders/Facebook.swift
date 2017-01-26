@@ -23,8 +23,13 @@ import PerfectHTTP
 import TurnstileCrypto
 import PerfectSession
 
+/// Facebook configuration singleton
 public struct FacebookConfig {
+
+	/// AppID obtained from registering app with Facebook (Also known as Client ID)
 	public static var appid = ""
+
+	/// Secret associated with AppID (also known as Client Secret)
 	public static var secret = ""
 
 	/// Where should Facebook redirect to after Authorization
@@ -55,7 +60,7 @@ public class Facebook: OAuth2 {
         return clientID + "%7C" + clientSecret
     }
     
-
+	/// After exchanging token, this function retrieves user information from Facebook
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let fields = ["id","first_name","last_name","picture"]
 		let url = "https://graph.facebook.com/v2.8/me?fields=\(fields.joined(separator: "%2C"))&access_token=\(accessToken)"
@@ -77,13 +82,14 @@ public class Facebook: OAuth2 {
 
 
 		return out
-		//return data
 	}
 
+	/// Facebook-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
 		return try exchange(request: request, state: state, redirectURL: FacebookConfig.endpointAfterAuth)
 	}
 
+	/// Facebook-specific login link
 	public func getLoginLink(state: String, scopes: [String] = []) -> String {
 		return getLoginLink(redirectURL: FacebookConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
@@ -106,7 +112,9 @@ public class Facebook: OAuth2 {
 		return ""
 	}
 
-
+	/// Route handler for managing the response from the OAuth provider
+	/// Route definition would be in the form
+	/// ["method":"get", "uri":"/auth/response/facebook", "handler":Facebook.authResponse]
 	public static func authResponse(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
@@ -146,7 +154,9 @@ public class Facebook: OAuth2 {
 
 
 
-
+	/// Route handler for managing the sending of the user to the OAuth provider for approval/login
+	/// Route definition would be in the form
+	/// ["method":"get", "uri":"/to/facebook", "handler":Facebook.sendToProvider]
 	public static func sendToProvider(data: [String:Any]) throws -> RequestHandler {
 		let rand = URandom()
 

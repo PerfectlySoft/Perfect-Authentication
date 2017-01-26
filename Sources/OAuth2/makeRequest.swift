@@ -17,14 +17,13 @@ extension OAuth2 {
 
 
 	/// The function that triggers the specific interaction with a remote server
-	/// Should only be used outside of the CouchDB module when custom interaction is required.
 	/// Parameters:
 	/// - method: The HTTP Method enum, i.e. .get, .post
 	/// - route: The route required
 	/// - body: The JSON formatted sring to sent to the server
 	/// Response:
 	/// (HTTPResponseStatus, "data" - [String:Any], "raw response" - [String:Any], HTTPHeaderParser)
-	public func makeRequest(
+	func makeRequest(
 		_ method: HTTPMethod,
 		_ url: String,
 		body: String = "",

@@ -23,8 +23,13 @@ import PerfectHTTP
 import TurnstileCrypto
 import PerfectSession
 
+/// GitHub configuration singleton
 public struct GitHubConfig {
+
+	/// AppID obtained from registering app with GitHub (Also known as Client ID)
 	public static var appid = ""
+
+	/// Secret associated with AppID (also known as Client Secret)
 	public static var secret = ""
 
 	/// Where should Facebook redirect to after Authorization
@@ -37,12 +42,11 @@ public struct GitHubConfig {
 }
 
 /**
-Facebook allows you to authenticate against Facebook for login purposes.
+GitHub allows you to authenticate against GitHub for login purposes.
 */
 public class GitHub: OAuth2 {
 	/**
-	Create a Facebook object. Uses the Client ID and Client Secret from the
-	Facebook Developers Console.
+	Create a GitHub object. Uses the Client ID and Client Secret obtained when registering the application.
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://github.com/login/oauth/access_token"
@@ -56,6 +60,7 @@ public class GitHub: OAuth2 {
 	}
 
 
+	/// After exchanging token, this function retrieves user information from GitHub
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let url = "https://api.github.com/user?access_token=\(accessToken)"
 		let (_, data, _, _) = makeRequest(.get, url)
@@ -79,16 +84,15 @@ public class GitHub: OAuth2 {
 			out["picture"] = n as! String
 		}
 
-
-
 		return out
-		//return data
 	}
 
+	/// GitHub-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
 		return try exchange(request: request, state: state, redirectURL: GitHubConfig.endpointAfterAuth)
 	}
 
+	/// GitHub-specific login link
 	public func getLoginLink(state: String, scopes: [String] = []) -> String {
 		return getLoginLink(redirectURL: GitHubConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
@@ -112,6 +116,9 @@ public class GitHub: OAuth2 {
 	}
 
 
+	/// Route handler for managing the response from the OAuth provider
+	/// Route definition would be in the form
+	/// ["method":"get", "uri":"/auth/response/github", "handler":GitHub.authResponse]
 	public static func authResponse(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
@@ -152,6 +159,9 @@ public class GitHub: OAuth2 {
 
 
 
+	/// Route handler for managing the sending of the user to the OAuth provider for approval/login
+	/// Route definition would be in the form
+	/// ["method":"get", "uri":"/to/github", "handler":GitHub.sendToProvider]
 	public static func sendToProvider(data: [String:Any]) throws -> RequestHandler {
 		let rand = URandom()
 

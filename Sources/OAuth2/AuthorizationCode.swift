@@ -1,6 +1,6 @@
 //
 //  AuthorizationCode.swift
-//  Turnstile
+//  Adapted from Turnstile
 //
 //  Created by Edward Jiang on 8/7/16.
 //

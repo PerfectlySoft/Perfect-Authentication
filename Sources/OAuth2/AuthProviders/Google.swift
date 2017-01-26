@@ -25,8 +25,13 @@ import PerfectHTTP
 import TurnstileCrypto
 import PerfectSession
 
+/// Google configuration singleton
 public struct GoogleConfig {
+
+	/// AppID obtained from registering app with Google (Also known as Client ID)
 	public static var appid = ""
+
+	/// Secret associated with AppID (also known as Client Secret)
 	public static var secret = ""
 
 	/// Where should Google redirect to after Authorization
@@ -43,8 +48,7 @@ Google allows you to authenticate against Google for login purposes.
 */
 public class Google: OAuth2 {
 	/**
-	Create a Google object. Uses the Client ID and Client Secret from the
-	Google Developers Console.
+	Create a Google object. Uses the Client ID and Client Secret obtained when registering the application.
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://www.googleapis.com/oauth2/v4/token"
@@ -58,6 +62,7 @@ public class Google: OAuth2 {
 	}
 
 
+	/// After exchanging token, this function retrieves user information from Google
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let fields = ["family_name","given_name","id","picture"]
 		let url = "https://www.googleapis.com/oauth2/v2/userinfo?fields=\(fields.joined(separator: "%2C"))&access_token=\(accessToken)"
@@ -78,19 +83,23 @@ public class Google: OAuth2 {
 			out["picture"] = n as! String
 		}
 
-
 		return out
 	}
 
+	/// Google-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
 		return try exchange(request: request, state: state, redirectURL: GoogleConfig.endpointAfterAuth)
 	}
 
+	/// Google-specific login link
 	public func getLoginLink(state: String, scopes: [String] = ["profile"]) -> String {
 		return getLoginLink(redirectURL: GoogleConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
 
 
+	/// Route handler for managing the response from the OAuth provider
+	/// Route definition would be in the form
+	/// ["method":"get", "uri":"/auth/response/facebook", "handler":Facebook.authResponse]
 	public static func authResponse(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
@@ -131,6 +140,9 @@ public class Google: OAuth2 {
 
 
 
+	/// Route handler for managing the sending of the user to the OAuth provider for approval/login
+	/// Route definition would be in the form
+	/// ["method":"get", "uri":"/to/google", "handler":Google.sendToProvider]
 	public static func sendToProvider(data: [String:Any]) throws -> RequestHandler {
 		let rand = URandom()
 

@@ -21,6 +21,7 @@ import PerfectHTTP
 import PerfectSession
 
 extension HTTPResponse {
+	/// Provides a convenience method for redirects
 	public func redirect(path: String) {
 		self.status = .found
 		self.addHeader(.location, value: path)

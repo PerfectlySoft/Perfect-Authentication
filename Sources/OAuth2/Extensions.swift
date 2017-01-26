@@ -1,6 +1,6 @@
 //
 //  Extensions.swift
-//  PerfectCouchDB
+//  Perfect Authentication / OAuth2
 //
 //  Created by Jonathan Guthrie on 2016-10-24.
 //
@@ -9,7 +9,7 @@
 import SwiftString
 import PerfectLib
 
-public func urlencode(dict: [String: String]) -> String {
+func urlencode(dict: [String: String]) -> String {
 
 	let httpBody = dict.map { (key, value) in
 		return key + "=" + value
@@ -23,7 +23,7 @@ public func urlencode(dict: [String: String]) -> String {
 
 /// A lightweight HTTP Response Header Parser
 /// transform the header into a dictionary with http status code
-public class HTTPHeaderParser {
+class HTTPHeaderParser {
 
 	private var _dic: [String:String] = [:]
 	private var _version: String? = nil
