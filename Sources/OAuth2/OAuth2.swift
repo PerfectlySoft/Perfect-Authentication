@@ -67,7 +67,6 @@ open class OAuth2 {
                         "code": authorizationCode.code]
 		let (_, data, _, _) = makeRequest(.post, tokenURL, body: urlencode(dict: postBody), encoding: "form")
         guard let token = OAuth2Token(json: data) else {
-			print("WTF? \(data)")
             if let error = OAuth2Error(json: data) {
                 throw error
             } else {

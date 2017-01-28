@@ -129,6 +129,7 @@ public class GitHub: OAuth2 {
 				}
 				let t = try fb.exchange(request: request, state: state as! String)
 				request.session?.data["accessToken"] = t.accessToken
+				request.session?.data["refreshToken"] = t.refreshToken
 
 				let userdata = fb.getUserData(t.accessToken)
 
