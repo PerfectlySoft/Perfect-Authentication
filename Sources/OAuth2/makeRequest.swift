@@ -27,13 +27,18 @@ extension OAuth2 {
 		_ method: HTTPMethod,
 		_ url: String,
 		body: String = "",
-		encoding: String = "JSON"
+		encoding: String = "JSON",
+		bearerToken: String = ""
 		) -> (Int, [String:Any], [String:Any], HTTPHeaderParser) {
 
 		let curlObject = CURL(url: url)
 		curlObject.setOption(CURLOPT_HTTPHEADER, s: "Accept: application/json")
 		curlObject.setOption(CURLOPT_HTTPHEADER, s: "Cache-Control: no-cache")
 		curlObject.setOption(CURLOPT_USERAGENT, s: "PerfectAPI2.0")
+
+		if !bearerToken.isEmpty {
+			curlObject.setOption(CURLOPT_HTTPHEADER, s: "Authorization: Bearer \(bearerToken)")
+		}
 
 		switch method {
 		case .post :
