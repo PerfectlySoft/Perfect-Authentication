@@ -172,7 +172,6 @@ public class GitHub: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let tw = GitHub(clientID: GitHubConfig.appid, clientSecret: GitHubConfig.secret)
-			print(tw.getLoginLink(state: request.session?.data["state"] as! String, scopes: ["user"]))
 			response.redirect(path: tw.getLoginLink(state: request.session?.data["state"] as! String, scopes: ["user"]))
 		}
 	}
