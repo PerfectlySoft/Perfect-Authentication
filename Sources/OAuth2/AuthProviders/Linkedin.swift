@@ -89,7 +89,6 @@ public class Linkedin: OAuth2 {
 			request, response in
 			let fb = Linkedin(clientID: LinkedinConfig.appid, clientSecret: LinkedinConfig.secret)
 			do {
-				print(request.params())
 				guard let state = request.session?.data["state"] else {
 					print("state issue: \(request.session?.data["state"])")
 					throw OAuth2Error(code: .unsupportedResponseType)
