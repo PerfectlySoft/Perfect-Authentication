@@ -29,3 +29,19 @@ extension HTTPResponse {
 	}
 }
 
+// Could be improved, I'm sure...
+func digIntoDictionary(mineFor: [String], data: [String: Any]) -> Any {
+	if mineFor.count == 0 { return "" }
+	for (key,value) in data {
+		if key == mineFor[0] {
+			var newMine = mineFor
+			newMine.removeFirst()
+			if newMine.count == 0 {
+				return value
+			} else if value is [String: Any] {
+				return digIntoDictionary(mineFor: newMine, data: value as! [String : Any])
+			}
+		}
+	}
+	return ""
+}

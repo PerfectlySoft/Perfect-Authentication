@@ -42,24 +42,24 @@ public struct FacebookConfig {
 }
 
 /**
- Facebook allows you to authenticate against Facebook for login purposes.
- */
+Facebook allows you to authenticate against Facebook for login purposes.
+*/
 public class Facebook: OAuth2 {
-    /**
-     Create a Facebook object. Uses the Client ID and Client Secret from the
-     Facebook Developers Console.
-     */
-    public init(clientID: String, clientSecret: String) {
-        let tokenURL = "https://graph.facebook.com/v2.3/oauth/access_token"
-        let authorizationURL = URL(string: "https://www.facebook.com/dialog/oauth")!
-        super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
-    }
+	/**
+	Create a Facebook object. Uses the Client ID and Client Secret from the
+	Facebook Developers Console.
+	*/
+	public init(clientID: String, clientSecret: String) {
+		let tokenURL = "https://graph.facebook.com/v2.3/oauth/access_token"
+		let authorizationURL = URL(string: "https://www.facebook.com/dialog/oauth")!
+		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
+	}
 
 
-    private var appAccessToken: String {
-        return clientID + "%7C" + clientSecret
-    }
-    
+	private var appAccessToken: String {
+		return clientID + "%7C" + clientSecret
+	}
+
 	/// After exchanging token, this function retrieves user information from Facebook
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let fields = ["id","first_name","last_name","picture"]
@@ -78,7 +78,7 @@ public class Facebook: OAuth2 {
 			out["last_name"] = n as! String
 		}
 
-		out["picture"] = dig(mineFor: ["picture", "data", "url"], data: data) as! String
+		out["picture"] = digIntoDictionary(mineFor: ["picture", "data", "url"], data: data) as! String
 
 
 		return out
@@ -94,23 +94,6 @@ public class Facebook: OAuth2 {
 		return getLoginLink(redirectURL: FacebookConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
 
-
-	// Could be improved, I'm sure...
-	func dig(mineFor: [String], data: [String: Any]) -> Any {
-		if mineFor.count == 0 { return "" }
-		for (key,value) in data {
-			if key == mineFor[0] {
-				var newMine = mineFor
-				newMine.removeFirst()
-				if newMine.count == 0 {
-					return value
-				} else if value is [String: Any] {
-					return dig(mineFor: newMine, data: value as! [String : Any])
-				}
-			}
-		}
-		return ""
-	}
 
 	/// Route handler for managing the response from the OAuth provider
 	/// Route definition would be in the form
@@ -170,7 +153,7 @@ public class Facebook: OAuth2 {
 			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
 		}
 	}
-	
+
 
 }
 

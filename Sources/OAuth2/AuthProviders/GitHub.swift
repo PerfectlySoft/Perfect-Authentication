@@ -98,23 +98,6 @@ public class GitHub: OAuth2 {
 	}
 
 
-	// Could be improved, I'm sure...
-	func dig(mineFor: [String], data: [String: Any]) -> Any {
-		if mineFor.count == 0 { return "" }
-		for (key,value) in data {
-			if key == mineFor[0] {
-				var newMine = mineFor
-				newMine.removeFirst()
-				if newMine.count == 0 {
-					return value
-				} else if value is [String: Any] {
-					return dig(mineFor: newMine, data: value as! [String : Any])
-				}
-			}
-		}
-		return ""
-	}
-
 
 	/// Route handler for managing the response from the OAuth provider
 	/// Route definition would be in the form
@@ -175,7 +158,7 @@ public class GitHub: OAuth2 {
 			response.redirect(path: tw.getLoginLink(state: request.session?.data["state"] as! String, scopes: ["user"]))
 		}
 	}
-
-
+	
+	
 }
 
