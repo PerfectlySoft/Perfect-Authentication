@@ -18,14 +18,16 @@ public class OAuth2Token {
 	public let refreshToken: String?
 	public let expiration: Date?
 	public let tokenType: String?
-	public let scope: [String]?
+    public let scope: [String]?
+    public let webToken: [String: Any]?
 
-	public init(accessToken: String, tokenType: String, expiresIn: Int? = nil, refreshToken: String? = nil, scope: [String]? = nil) {
+	public init(accessToken: String, tokenType: String, expiresIn: Int? = nil, refreshToken: String? = nil, scope: [String]? = nil, webToken: [String: Any]? = nil) {
 		self.accessToken = accessToken
 		self.tokenType = tokenType
 		self.refreshToken = refreshToken
 		self.expiration = expiresIn == nil ? nil : Date(timeIntervalSinceNow: Double(expiresIn!))
 		self.scope = scope
+        self.webToken = webToken
 	}
 
 	public convenience init?(json: [String: Any]) {
@@ -40,6 +42,32 @@ public class OAuth2Token {
 		let expiresIn = json["expires_in"] as? Int
 		let refreshToken: String? = json["refresh_token"] as? String
 		let scope = (json["scope"] as? String)?.components(separatedBy: " ")
-		self.init(accessToken: accessToken, tokenType: tokenType, expiresIn: expiresIn, refreshToken: refreshToken, scope: scope)
+        let webToken = OAuth2Token.decodeWebToken(json: json)
+        self.init(accessToken: accessToken, tokenType: tokenType, expiresIn: expiresIn, refreshToken: refreshToken, scope: scope, webToken: webToken)
 	}
+
+    private static func decodeWebToken(json: [String: Any]) -> [String: Any]? {
+        var webToken: [String: Any]?
+
+        /// Decode Google Json web token
+        if let id = json["id_token"] as? String {
+            let arr = id.components(separatedBy: ".")
+
+            var content = arr[1] as String
+            if content.characters.count % 4 != 0 {
+                let padlen = 4 - content.characters.count % 4
+                content += String(repeating: "=", count: padlen)
+            }
+
+            if let data = Data(base64Encoded: content, options: []),
+                let str = String(data: data, encoding: String.Encoding.utf8) {
+                do {
+                    webToken = try str.jsonDecode() as? [String : Any]
+                } catch {
+                }
+            }
+        }
+
+        return webToken
+    }
 }
