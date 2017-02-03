@@ -60,7 +60,6 @@ open class OAuth2 {
     /// - throws: APIConnectionError() if we cannot connect to the OAuth server
     /// - throws: InvalidAPIResponse() if the server does not respond in a way we expect
     open func exchange(authorizationCode: AuthorizationCode) throws -> OAuth2Token {
-		print(authorizationCode.redirectURL)
         let postBody = ["grant_type": "authorization_code",
                         "client_id": clientID,
                         "client_secret": clientSecret,
