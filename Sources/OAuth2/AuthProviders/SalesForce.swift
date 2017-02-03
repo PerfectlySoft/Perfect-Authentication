@@ -38,8 +38,8 @@ public class SalesForce: OAuth2 {
 	SalesForce Developers Console.
 	*/
 	public init(clientID: String, clientSecret: String) {
-		let tokenURL = "https://slack.com/api/oauth.access"
-		let authorizationURL = "https://slack.com/oauth/authorize"
+		let tokenURL = "https://login.salesforce.com/services/oauth2/token"
+		let authorizationURL = "https://login.salesforce.com/services/oauth2/authorize"
 		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
 	}
 
@@ -49,20 +49,23 @@ public class SalesForce: OAuth2 {
 	}
 
 	/// After exchanging token, this function retrieves user information from SalesForce
-	public func getUserData(_ accessToken: String) -> [String: Any] {
-		let url = "https://slack.com/api/users.identity?token=\(accessToken)"
-		let (_, data, _, _) = makeRequest(.get, url)
+	public func getUserData(_ accessToken: String, _ idURL: String) -> [String: Any] {
+		let url = idURL
+		let (_, data, _, _) = makeRequest(.get, url, bearerToken: accessToken)
+
 		var out = [String: Any]()
-		out["id"] = digIntoDictionary(mineFor: ["user", "id"], data: data) as! String
-		let fullName = digIntoDictionary(mineFor: ["user", "name"], data: data) as! String
-		let fullNameSplit = fullName.components(separatedBy: " ")
-		if fullNameSplit.count > 0 {
-			out["first_name"] = fullNameSplit.first
+		if let n = data["user_id"] {
+			out["userid"] = n as! String
 		}
-		if fullNameSplit.count > 1 {
-			out["last_name"] = fullNameSplit.last
+		if let n = data["first_name"] {
+			out["first_name"] = n as! String
 		}
-		out["picture"] = digIntoDictionary(mineFor: ["user", "image_192"], data: data) as! String
+		if let n = data["last_name"] {
+			out["last_name"] = n as! String
+		}
+		out["picture"] = digIntoDictionary(mineFor: ["photos", "picture"], data: data) as! String
+
+		//		["asserted_user": true, "display_name": "Jonathan Guthrie", "is_app_installed": true, "addr_street": PerfectLib.JSONConvertibleNull(), "language": "en_US", "active": true, "addr_city": PerfectLib.JSONConvertibleNull(), "last_name": "Guthrie", "id": "https://login.salesforce.com/id/00D41000002lDGEEA2/00541000002W2n0AAC", "timezone": "America/New_York", "addr_country": "CA", "urls": ["metadata": "https://na35.salesforce.com/services/Soap/m/{version}/00D41000002lDGE", "search": "https://na35.salesforce.com/services/data/v{version}/search/", "users": "https://na35.salesforce.com/services/data/v{version}/chatter/users", "feed_items": "https://na35.salesforce.com/services/data/v{version}/chatter/feed-items", "feed_elements": "https://na35.salesforce.com/services/data/v{version}/chatter/feed-elements", "query": "https://na35.salesforce.com/services/data/v{version}/query/", "enterprise": "https://na35.salesforce.com/services/Soap/c/{version}/00D41000002lDGE", "sobjects": "https://na35.salesforce.com/services/data/v{version}/sobjects/", "recent": "https://na35.salesforce.com/services/data/v{version}/recent/", "rest": "https://na35.salesforce.com/services/data/v{version}/", "groups": "https://na35.salesforce.com/services/data/v{version}/chatter/groups", "feeds": "https://na35.salesforce.com/services/data/v{version}/chatter/feeds", "profile": "https://na35.salesforce.com/00541000002W2n0AAC", "partner": "https://na35.salesforce.com/services/Soap/u/{version}/00D41000002lDGE"], "utcOffset": -18000000, "mobile_phone_verified": false, "organization_id": "00D41000002lDGEEA2", "nick_name": "jono", "email_verified": true, "email": "jono@perfect.org", "photos": ["picture": "https://c.na35.content.force.com/profilephoto/005/F", "thumbnail": "https://c.na35.content.force.com/profilephoto/005/T"], "username": "jono@perfect.org", "addr_zip": PerfectLib.JSONConvertibleNull(), "addr_state": PerfectLib.JSONConvertibleNull(), "status": ["created_date": PerfectLib.JSONConvertibleNull(), "body": PerfectLib.JSONConvertibleNull()], "locale": "en_US", "mobile_phone": PerfectLib.JSONConvertibleNull(), "last_modified_date": "2017-01-31T21:19:51.000+0000", "first_name": "Jonathan", "user_type": "STANDARD", "user_id": "00541000002W2n0AAC"]
 
 		return out
 	}
@@ -73,7 +76,7 @@ public class SalesForce: OAuth2 {
 	}
 
 	/// SalesForce-specific login link
-	public func getLoginLink(state: String, scopes: [String] = ["identity.basic", "identity.avatar"]) -> String {
+	public func getLoginLink(state: String, scopes: [String] = ["id"]) -> String {
 		return getLoginLink(redirectURL: SalesForceConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
 
@@ -93,10 +96,10 @@ public class SalesForce: OAuth2 {
 				request.session?.data["accessToken"] = t.accessToken
 				request.session?.data["refreshToken"] = t.refreshToken
 
-				let userdata = fb.getUserData(t.accessToken)
+				let userdata = fb.getUserData(t.accessToken, t.idURL!)
 				request.session?.data["loginType"] = "salesforce"
 
-				if let i = userdata["id"] {
+				if let i = userdata["userid"] {
 					request.session?.userid = i as! String
 				}
 				if let i = userdata["first_name"] {
@@ -108,8 +111,6 @@ public class SalesForce: OAuth2 {
 				if let i = userdata["picture"] {
 					request.session?.data["picture"] = i as! String
 				}
-
-
 
 			} catch {
 				print(error)
