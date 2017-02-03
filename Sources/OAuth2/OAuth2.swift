@@ -24,13 +24,13 @@ open class OAuth2 {
     public let clientSecret: String
     
     /// The Authorization Endpoint of the OAuth 2 Server
-    public let authorizationURL: URL
+    public let authorizationURL: String
     
     /// The Token Endpoint of the OAuth 2 Server
     public let tokenURL: String
     
     /// Creates the OAuth 2 client
-    public init(clientID: String, clientSecret: String, authorizationURL: URL, tokenURL: String) {
+    public init(clientID: String, clientSecret: String, authorizationURL: String, tokenURL: String) {
         self.clientID = clientID
         self.clientSecret = clientSecret
         self.authorizationURL = authorizationURL

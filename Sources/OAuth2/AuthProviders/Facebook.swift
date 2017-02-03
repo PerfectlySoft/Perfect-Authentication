@@ -51,7 +51,7 @@ public class Facebook: OAuth2 {
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://graph.facebook.com/v2.3/oauth/access_token"
-		let authorizationURL = URL(string: "https://www.facebook.com/dialog/oauth")!
+		let authorizationURL = "https://www.facebook.com/dialog/oauth"
 		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
 	}
 

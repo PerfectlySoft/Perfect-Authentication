@@ -55,7 +55,7 @@ public class Google: OAuth2 {
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://www.googleapis.com/oauth2/v4/token"
-		let authorizationURL = URL(string: "https://accounts.google.com/o/oauth2/auth")!
+		let authorizationURL = "https://accounts.google.com/o/oauth2/auth"
 		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
 	}
 

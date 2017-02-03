@@ -50,7 +50,7 @@ public class GitHub: OAuth2 {
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://github.com/login/oauth/access_token"
-		let authorizationURL = URL(string: "https://github.com/login/oauth/authorize")!
+		let authorizationURL = "https://github.com/login/oauth/authorize"
 		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
 	}
 
