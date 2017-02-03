@@ -39,7 +39,7 @@ public class SalesForce: OAuth2 {
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://slack.com/api/oauth.access"
-		let authorizationURL = URL(string: "https://slack.com/oauth/authorize")!
+		let authorizationURL = "https://slack.com/oauth/authorize"
 		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
 	}
 
