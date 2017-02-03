@@ -40,7 +40,7 @@ public class Linkedin: OAuth2 {
 	*/
 	public init(clientID: String, clientSecret: String) {
 		let tokenURL = "https://www.linkedin.com/oauth/v2/accessToken"
-		let authorizationURL = URL(string: "https://www.linkedin.com/oauth/v2/authorization")!
+		let authorizationURL = "https://www.linkedin.com/oauth/v2/authorization"
 		super.init(clientID: clientID, clientSecret: clientSecret, authorizationURL: authorizationURL, tokenURL: tokenURL)
 	}
 
