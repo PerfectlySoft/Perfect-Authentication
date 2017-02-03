@@ -40,6 +40,9 @@ public struct GoogleConfig {
 	/// Where should the app redirect to after Authorization & Token Exchange
 	public static var redirectAfterAuth = ""
 
+    /// Domain restriction if needed
+    public static var restrictedDomain: String?
+
 	public init(){}
 }
 
@@ -88,13 +91,25 @@ public class Google: OAuth2 {
 
 	/// Google-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: GoogleConfig.endpointAfterAuth)
-	}
+        let token = try exchange(request: request, state: state, redirectURL: GoogleConfig.endpointAfterAuth)
+
+        if let domain = GoogleConfig.restrictedDomain {
+            guard let hd = token.webToken?["hd"] as? String, hd == domain else {
+                throw OAuth2Error(code: .unsupportedResponseType)
+            }
+        }
+
+        return token
+    }
 
 	/// Google-specific login link
 	public func getLoginLink(state: String, scopes: [String] = ["profile"]) -> String {
-		return getLoginLink(redirectURL: GoogleConfig.endpointAfterAuth, state: state, scopes: scopes)
-	}
+        var url = getLoginLink(redirectURL: GoogleConfig.endpointAfterAuth, state: state, scopes: scopes)
+        if let domain = GoogleConfig.restrictedDomain {
+            url += "&hd=\(domain)"
+        }
+        return url
+    }
 
 
 	/// Route handler for managing the response from the OAuth provider
