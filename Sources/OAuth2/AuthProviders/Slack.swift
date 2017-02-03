@@ -115,7 +115,7 @@ public class Slack: OAuth2 {
 			} catch {
 				print(error)
 			}
-			response.redirect(path: SlackConfig.redirectAfterAuth)
+			response.redirect(path: SlackConfig.redirectAfterAuth, sessionid: (request.session?.token)!)
 		}
 	}
 

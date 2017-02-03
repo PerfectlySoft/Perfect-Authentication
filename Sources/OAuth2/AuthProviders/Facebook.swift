@@ -64,6 +64,7 @@ public class Facebook: OAuth2 {
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let fields = ["id","first_name","last_name","picture"]
 		let url = "https://graph.facebook.com/v2.8/me?fields=\(fields.joined(separator: "%2C"))&access_token=\(accessToken)"
+
 		let (_, data, _, _) = makeRequest(.get, url)
 
 		var out = [String: Any]()
@@ -80,18 +81,17 @@ public class Facebook: OAuth2 {
 
 		out["picture"] = digIntoDictionary(mineFor: ["picture", "data", "url"], data: data) as! String
 
-
 		return out
 	}
 
 	/// Facebook-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: FacebookConfig.endpointAfterAuth)
+		return try exchange(request: request, state: state, redirectURL: "\(FacebookConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
 	}
 
 	/// Facebook-specific login link
-	public func getLoginLink(state: String, scopes: [String] = []) -> String {
-		return getLoginLink(redirectURL: FacebookConfig.endpointAfterAuth, state: state, scopes: scopes)
+	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = []) -> String {
+		return getLoginLink(redirectURL: "\(FacebookConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
 	}
 
 
@@ -107,6 +107,7 @@ public class Facebook: OAuth2 {
 					throw OAuth2Error(code: .unsupportedResponseType)
 				}
 				let t = try fb.exchange(request: request, state: state as! String)
+
 				request.session?.data["accessToken"] = t.accessToken
 				request.session?.data["refreshToken"] = t.refreshToken
 
@@ -131,7 +132,7 @@ public class Facebook: OAuth2 {
 			} catch {
 				print(error)
 			}
-			response.redirect(path: FacebookConfig.redirectAfterAuth)
+			response.redirect(path: FacebookConfig.redirectAfterAuth, sessionid: (request.session?.token)!)
 		}
 	}
 
@@ -150,10 +151,10 @@ public class Facebook: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let fb = Facebook(clientID: FacebookConfig.appid, clientSecret: FacebookConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
 		}
 	}
-
-
+	
+	
 }
 

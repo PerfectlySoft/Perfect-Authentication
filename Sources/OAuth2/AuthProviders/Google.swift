@@ -148,7 +148,7 @@ public class Google: OAuth2 {
 			} catch {
 				print(error)
 			}
-			response.redirect(path: GoogleConfig.redirectAfterAuth)
+			response.redirect(path: GoogleConfig.redirectAfterAuth, sessionid: (request.session?.token)!)
 		}
 	}
 

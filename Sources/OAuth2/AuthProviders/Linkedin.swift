@@ -118,7 +118,7 @@ public class Linkedin: OAuth2 {
 			} catch {
 				print(error)
 			}
-			response.redirect(path: LinkedinConfig.redirectAfterAuth)
+			response.redirect(path: LinkedinConfig.redirectAfterAuth, sessionid: (request.session?.token)!)
 		}
 	}
 

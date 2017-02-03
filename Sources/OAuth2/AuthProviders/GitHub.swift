@@ -135,7 +135,7 @@ public class GitHub: OAuth2 {
 			} catch {
 				print(error)
 			}
-			response.redirect(path: GitHubConfig.redirectAfterAuth)
+			response.redirect(path: GitHubConfig.redirectAfterAuth, sessionid: (request.session?.token)!)
 		}
 	}
 
