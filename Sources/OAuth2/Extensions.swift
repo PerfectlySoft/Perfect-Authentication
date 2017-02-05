@@ -35,7 +35,7 @@ class HTTPHeaderParser {
 	public init(header: String) {
 
 		// parse the header into lines,
-		_ = header.components(separatedBy: .newlines)
+		_ = header.components(separatedBy: "\r\n")
 			// remove all null lines
 			.filter{!$0.isEmpty}
 			// map each line into the dictionary
