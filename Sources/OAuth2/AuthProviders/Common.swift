@@ -20,17 +20,17 @@
 import PerfectHTTP
 import PerfectSession
 
-//extension HTTPResponse {
-//	/// Provides a convenience method for redirects
-//	public func redirect(path: String, sessionid: String = "") {
-//		if !sessionid.isEmpty  {
-//			self.setHeader(.custom(name: "Authorization"), value: "Bearer \(sessionid)")
-//		}
-//		self.status = .found
-//		self.setHeader(.location, value: path)
-//		self.completed()
-//	}
-//}
+extension HTTPResponse {
+	/// Provides a convenience method for redirects
+	public func redirect(path: String, sessionid: String = "") {
+		if !sessionid.isEmpty  {
+			self.setHeader(.custom(name: "Authorization"), value: "Bearer \(sessionid)")
+		}
+		self.status = .found
+		self.setHeader(.location, value: path)
+		self.completed()
+	}
+}
 
 // Could be improved, I'm sure...
 func digIntoDictionary(mineFor: [String], data: [String: Any]) -> Any {
