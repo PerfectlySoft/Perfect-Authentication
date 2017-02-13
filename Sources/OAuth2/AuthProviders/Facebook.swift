@@ -143,7 +143,7 @@ public class Facebook: OAuth2 {
 	/// Route definition would be in the form
 	/// ["method":"get", "uri":"/to/facebook", "handler":Facebook.sendToProvider]
 	public static func sendToProvider(data: [String:Any]) throws -> RequestHandler {
-		let rand = URandom()
+//		let rand = URandom()
 
 		return {
 			request, response in
