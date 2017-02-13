@@ -103,7 +103,7 @@ public class Facebook: OAuth2 {
 			request, response in
 			let fb = Facebook(clientID: FacebookConfig.appid, clientSecret: FacebookConfig.secret)
 			do {
-				guard let state = request.session?.data["state"] else {
+				guard let state = request.session?.data["csrf"] else {
 					throw OAuth2Error(code: .unsupportedResponseType)
 				}
 				let t = try fb.exchange(request: request, state: state as! String)
@@ -149,9 +149,9 @@ public class Facebook: OAuth2 {
 			request, response in
 			// Add secure state token to session
 			// We expect to get this back from the auth
-			request.session?.data["state"] = rand.secureToken
+//			request.session?.data["state"] = rand.secureToken
 			let fb = Facebook(clientID: FacebookConfig.appid, clientSecret: FacebookConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["csrf"] as! String, request: request))
 		}
 	}
 	

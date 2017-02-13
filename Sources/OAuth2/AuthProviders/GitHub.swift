@@ -107,7 +107,7 @@ public class GitHub: OAuth2 {
 			request, response in
 			let fb = GitHub(clientID: GitHubConfig.appid, clientSecret: GitHubConfig.secret)
 			do {
-				guard let state = request.session?.data["state"] else {
+				guard let state = request.session?.data["csrf"] else {
 					throw OAuth2Error(code: .unsupportedResponseType)
 				}
 				let t = try fb.exchange(request: request, state: state as! String)
@@ -153,9 +153,9 @@ public class GitHub: OAuth2 {
 			request, response in
 			// Add secure state token to session
 			// We expect to get this back from the auth
-			request.session?.data["state"] = rand.secureToken
+//			request.session?.data["state"] = rand.secureToken
 			let tw = GitHub(clientID: GitHubConfig.appid, clientSecret: GitHubConfig.secret)
-			response.redirect(path: tw.getLoginLink(state: request.session?.data["state"] as! String, request: request, scopes: ["user"]))
+			response.redirect(path: tw.getLoginLink(state: request.session?.data["csrf"] as! String, request: request, scopes: ["user"]))
 		}
 	}
 	

@@ -88,8 +88,8 @@ public class SalesForce: OAuth2 {
 			request, response in
 			let fb = SalesForce(clientID: SalesForceConfig.appid, clientSecret: SalesForceConfig.secret)
 			do {
-				guard let state = request.session?.data["state"] else {
-					print("state issue: \(request.session?.data["state"])")
+				guard let state = request.session?.data["csrf"] else {
+//					print("state issue: \(request.session?.data["state"])")
 					throw OAuth2Error(code: .unsupportedResponseType)
 				}
 				let t = try fb.exchange(request: request, state: state as! String)
@@ -129,9 +129,9 @@ public class SalesForce: OAuth2 {
 			request, response in
 			// Add secure state token to session
 			// We expect to get this back from the auth
-			request.session?.data["state"] = rand.secureToken
+//			request.session?.data["state"] = rand.secureToken
 			let fb = SalesForce(clientID: SalesForceConfig.appid, clientSecret: SalesForceConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["csrf"] as! String, request: request))
 		}
 	}
 	
