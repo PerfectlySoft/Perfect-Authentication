@@ -69,7 +69,8 @@ public class Google: OAuth2 {
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let fields = ["family_name","given_name","id","picture"]
 		let url = "https://www.googleapis.com/oauth2/v2/userinfo?fields=\(fields.joined(separator: "%2C"))&access_token=\(accessToken)"
-		let (_, data, _, _) = makeRequest(.get, url)
+//		let (_, data, _, _) = makeRequest(.get, url)
+		let data = makeRequest(.get, url)
 
 		var out = [String: Any]()
 

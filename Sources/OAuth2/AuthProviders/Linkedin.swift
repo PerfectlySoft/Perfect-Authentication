@@ -52,7 +52,9 @@ public class Linkedin: OAuth2 {
 	/// After exchanging token, this function retrieves user information from Linkedin
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let url = "https://api.linkedin.com/v1/people/~:(id,first-name,last-name,picture-url)?format=json"
-		let (_, data, _, _) = makeRequest(.get, url, bearerToken: accessToken)
+//		let (_, data, _, _) = makeRequest(.get, url, bearerToken: accessToken)
+		let data = makeRequest(.get, url, bearerToken: accessToken)
+
 		var out = [String: Any]()
 
 		if let n = data["id"] {

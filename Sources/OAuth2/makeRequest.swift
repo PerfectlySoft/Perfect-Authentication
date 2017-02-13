@@ -29,7 +29,8 @@ extension OAuth2 {
 		body: String = "",
 		encoding: String = "JSON",
 		bearerToken: String = ""
-		) -> (Int, [String:Any], [String:Any], HTTPHeaderParser) {
+//		) -> (Int, [String:Any], [String:Any], HTTPHeaderParser) {
+		) -> ([String:Any]) {
 
 		let curlObject = CURL(url: url)
 		curlObject.setOption(CURLOPT_HTTPHEADER, s: "Accept: application/json")
@@ -88,16 +89,16 @@ extension OAuth2 {
 		// Parsing now:
 
 		// assember the header from a binary byte array to a string
-		let headerStr = String(bytes: header, encoding: String.Encoding.utf8)
+//		let headerStr = String(bytes: header, encoding: String.Encoding.utf8)
 
 		// parse the header
-		let http = HTTPHeaderParser(header:headerStr!)
+//		let http = HTTPHeaderParser(header:headerStr!)
 
 		// assamble the body from a binary byte array to a string
 		let content = String(bytes:bodyIn, encoding:String.Encoding.utf8)
 
 		// prepare the failsafe content.
-		raw = ["status": http.status, "header": headerStr!, "body": content!]
+//		raw = ["status": http.status, "header": headerStr!, "body": content!]
 
 		// parse the body data into a json convertible
 		do {
@@ -109,9 +110,11 @@ extension OAuth2 {
 					data = try content?.jsonDecode() as! [String : Any]
 				}
 			}
-			return (http.code, data, raw, http)
+			return data
+//			return (http.code, data, raw, http)
 		} catch {
-			return (http.code, [:], raw, http)
+			return [:]
+//			return (http.code, [:], raw, http)
 		}
 	}
 }

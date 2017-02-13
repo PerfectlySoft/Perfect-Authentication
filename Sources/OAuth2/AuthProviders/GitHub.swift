@@ -63,7 +63,8 @@ public class GitHub: OAuth2 {
 	/// After exchanging token, this function retrieves user information from GitHub
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let url = "https://api.github.com/user?access_token=\(accessToken)"
-		let (_, data, _, _) = makeRequest(.get, url)
+//		let (_, data, _, _) = makeRequest(.get, url)
+		let data = makeRequest(.get, url)
 
 		var out = [String: Any]()
 

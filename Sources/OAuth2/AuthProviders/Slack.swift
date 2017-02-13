@@ -52,7 +52,8 @@ public class Slack: OAuth2 {
 	/// After exchanging token, this function retrieves user information from Slack
 	public func getUserData(_ accessToken: String) -> [String: Any] {
 		let url = "https://slack.com/api/users.identity?token=\(accessToken)"
-		let (_, data, _, _) = makeRequest(.get, url)
+//		let (_, data, _, _) = makeRequest(.get, url)
+		let data = makeRequest(.get, url)
 		var out = [String: Any]()
 		out["id"] = digIntoDictionary(mineFor: ["user", "id"], data: data) as! String
 		let fullName = digIntoDictionary(mineFor: ["user", "name"], data: data) as! String

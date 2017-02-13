@@ -51,7 +51,8 @@ public class SalesForce: OAuth2 {
 	/// After exchanging token, this function retrieves user information from SalesForce
 	public func getUserData(_ accessToken: String, _ idURL: String) -> [String: Any] {
 		let url = idURL
-		let (_, data, _, _) = makeRequest(.get, url, bearerToken: accessToken)
+//		let (_, data, _, _) = makeRequest(.get, url, bearerToken: accessToken)
+		let data = makeRequest(.get, url, bearerToken: accessToken)
 
 		var out = [String: Any]()
 		if let n = data["user_id"] {

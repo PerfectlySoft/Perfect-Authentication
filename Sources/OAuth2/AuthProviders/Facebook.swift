@@ -65,7 +65,8 @@ public class Facebook: OAuth2 {
 		let fields = ["id","first_name","last_name","picture"]
 		let url = "https://graph.facebook.com/v2.8/me?fields=\(fields.joined(separator: "%2C"))&access_token=\(accessToken)"
 
-		let (_, data, _, _) = makeRequest(.get, url)
+//		let (_, data, _, _) = makeRequest(.get, url)
+		let data = makeRequest(.get, url)
 
 		var out = [String: Any]()
 
