@@ -72,12 +72,12 @@ public class SalesForce: OAuth2 {
 
 	/// SalesForce-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: SalesForceConfig.endpointAfterAuth)
+		return try exchange(request: request, state: state, redirectURL: "\(SalesForceConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
 	}
 
 	/// SalesForce-specific login link
-	public func getLoginLink(state: String, scopes: [String] = ["id"]) -> String {
-		return getLoginLink(redirectURL: SalesForceConfig.endpointAfterAuth, state: state, scopes: scopes)
+	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = ["id"]) -> String {
+		return getLoginLink(redirectURL: "\(SalesForceConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
 	}
 
 	/// Route handler for managing the response from the OAuth provider
@@ -131,7 +131,7 @@ public class SalesForce: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let fb = SalesForce(clientID: SalesForceConfig.appid, clientSecret: SalesForceConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
 		}
 	}
 	

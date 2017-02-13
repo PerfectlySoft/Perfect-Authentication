@@ -70,12 +70,12 @@ public class Slack: OAuth2 {
 
 	/// Slack-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: SlackConfig.endpointAfterAuth)
+		return try exchange(request: request, state: state, redirectURL: "\(SlackConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
 	}
 
 	/// Slack-specific login link
-	public func getLoginLink(state: String, scopes: [String] = ["identity.basic", "identity.avatar"]) -> String {
-		return getLoginLink(redirectURL: SlackConfig.endpointAfterAuth, state: state, scopes: scopes)
+	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = ["identity.basic", "identity.avatar"]) -> String {
+		return getLoginLink(redirectURL: "\(SlackConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
 	}
 
 	/// Route handler for managing the response from the OAuth provider
@@ -131,7 +131,7 @@ public class Slack: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let fb = Slack(clientID: SlackConfig.appid, clientSecret: SlackConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
 		}
 	}
 	

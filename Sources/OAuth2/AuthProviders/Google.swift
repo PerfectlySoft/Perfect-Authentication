@@ -40,8 +40,8 @@ public struct GoogleConfig {
 	/// Where should the app redirect to after Authorization & Token Exchange
 	public static var redirectAfterAuth = ""
 
-    /// Domain restriction if needed
-    public static var restrictedDomain: String?
+	/// Domain restriction if needed
+	public static var restrictedDomain: String?
 
 	public init(){}
 }
@@ -91,25 +91,25 @@ public class Google: OAuth2 {
 
 	/// Google-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-        let token = try exchange(request: request, state: state, redirectURL: GoogleConfig.endpointAfterAuth)
+		let token = try exchange(request: request, state: state, redirectURL: "\(GoogleConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
 
-        if let domain = GoogleConfig.restrictedDomain {
-            guard let hd = token.webToken?["hd"] as? String, hd == domain else {
-                throw OAuth2Error(code: .unsupportedResponseType)
-            }
-        }
+		if let domain = GoogleConfig.restrictedDomain {
+			guard let hd = token.webToken?["hd"] as? String, hd == domain else {
+				throw OAuth2Error(code: .unsupportedResponseType)
+			}
+		}
 
-        return token
-    }
+		return token
+	}
 
 	/// Google-specific login link
-	public func getLoginLink(state: String, scopes: [String] = ["profile"]) -> String {
-        var url = getLoginLink(redirectURL: GoogleConfig.endpointAfterAuth, state: state, scopes: scopes)
-        if let domain = GoogleConfig.restrictedDomain {
-            url += "&hd=\(domain)"
-        }
-        return url
-    }
+	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = ["profile"]) -> String {
+		var url = getLoginLink(redirectURL: "\(GoogleConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
+		if let domain = GoogleConfig.restrictedDomain {
+			url += "&hd=\(domain)"
+		}
+		return url
+	}
 
 
 	/// Route handler for managing the response from the OAuth provider
@@ -168,7 +168,7 @@ public class Google: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let fb = Google(clientID: GoogleConfig.appid, clientSecret: GoogleConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
 		}
 	}
 

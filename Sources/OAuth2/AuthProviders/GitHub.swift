@@ -89,12 +89,12 @@ public class GitHub: OAuth2 {
 
 	/// GitHub-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: GitHubConfig.endpointAfterAuth)
+		return try exchange(request: request, state: state, redirectURL: "\(GitHubConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
 	}
 
 	/// GitHub-specific login link
-	public func getLoginLink(state: String, scopes: [String] = []) -> String {
-		return getLoginLink(redirectURL: GitHubConfig.endpointAfterAuth, state: state, scopes: scopes)
+	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = []) -> String {
+		return getLoginLink(redirectURL: "\(GitHubConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
 	}
 
 
@@ -155,7 +155,7 @@ public class GitHub: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let tw = GitHub(clientID: GitHubConfig.appid, clientSecret: GitHubConfig.secret)
-			response.redirect(path: tw.getLoginLink(state: request.session?.data["state"] as! String, scopes: ["user"]))
+			response.redirect(path: tw.getLoginLink(state: request.session?.data["state"] as! String, request: request, scopes: ["user"]))
 		}
 	}
 	

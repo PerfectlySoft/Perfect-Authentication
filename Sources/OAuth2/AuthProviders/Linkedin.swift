@@ -73,12 +73,12 @@ public class Linkedin: OAuth2 {
 
 	/// Linkedin-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: LinkedinConfig.endpointAfterAuth)
+		return try exchange(request: request, state: state, redirectURL: "\(LinkedinConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
 	}
 
 	/// Linkedin-specific login link
-	public func getLoginLink(state: String, scopes: [String] = ["r_basicprofile"]) -> String {
-		return getLoginLink(redirectURL: LinkedinConfig.endpointAfterAuth, state: state, scopes: scopes)
+	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = ["r_basicprofile"]) -> String {
+		return getLoginLink(redirectURL: "\(LinkedinConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
 	}
 
 	/// Route handler for managing the response from the OAuth provider
@@ -134,7 +134,7 @@ public class Linkedin: OAuth2 {
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
 			let fb = Linkedin(clientID: LinkedinConfig.appid, clientSecret: LinkedinConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
+			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String, request: request))
 		}
 	}
 	
