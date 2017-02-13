@@ -75,12 +75,12 @@ public class Linkedin: OAuth2 {
 
 	/// Linkedin-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		return try exchange(request: request, state: state, redirectURL: "\(LinkedinConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
+		return try exchange(request: request, state: state, redirectURL: LinkedinConfig.endpointAfterAuth)
 	}
 
 	/// Linkedin-specific login link
 	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = ["r_basicprofile"]) -> String {
-		return getLoginLink(redirectURL: "\(LinkedinConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
+		return getLoginLink(redirectURL: LinkedinConfig.endpointAfterAuth, state: state, scopes: scopes)
 	}
 
 	/// Route handler for managing the response from the OAuth provider
