@@ -92,7 +92,47 @@ open class OAuth2 {
         return try exchange(authorizationCode: AuthorizationCode(code: code, redirectURL: redirectURL))
     }
     
-    // TODO: add refresh token support
+    
+    /// Renew Access token by using the previously fetched refresh token
+    /// - Parameters:
+    ///     - refreshToken: the refresh token used to renew the access token
+    ///     - needSecret: Some providers do not need a client secret (i.e. Microsoft)
+    ///     - scopes: the scopes used with the original access token (optional)
+    /// - Throws:
+    ///     - InvalidAPIResponse(): if the server does not respond in a way we expect
+    ///     - OAuth2Error() if the oauth server calls back with an error
+    
+    func refresh(refreshToken: String, needSecret: Bool = false, scopes: [String] = []) throws -> OAuth2Token {
+        
+        var postBody = ["grant_type": "refresh_token",
+                        "client_id": clientID,
+                        "refresh_token": refreshToken]
+        
+        if !scopes.isEmpty {
+            postBody["scope"] = scopes.joined(separator: " ")
+        }
+        
+        if needSecret {
+            postBody["client_secret"] = clientSecret
+        }
+        
+        var httpBody = URLComponents()
+        httpBody.queryItems = postBody.map { key, value in
+            return URLQueryItem(name: key, value: value)
+        }
+        
+        let data = makeRequest(.post, tokenURL, body: httpBody.percentEncodedQuery!, encoding: "form")
+        guard let token = OAuth2Token(json: data) else {
+            if let error = OAuth2Error(json: data) {
+                throw error
+            } else {
+                throw InvalidAPIResponse()
+            }
+        }
+        return token
+        
+    }
+
 }
 
 extension URLComponents {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import AuthProviders
+@testable import OAuth2
 
 class AuthProvidersTests: XCTestCase {
 
