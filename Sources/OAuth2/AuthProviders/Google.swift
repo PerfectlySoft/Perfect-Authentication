@@ -103,7 +103,7 @@ public class Google: OAuth2 {
     }
 
 	/// Google-specific login link
-	public func getLoginLink(state: String, scopes: [String] = ["profile"]) -> String {
+	public func getLoginLink(state: String, scopes: [String] = ["openid", "email"]) -> String {
         var url = getLoginLink(redirectURL: GoogleConfig.endpointAfterAuth, state: state, scopes: scopes)
         if let domain = GoogleConfig.restrictedDomain {
             url += "&hd=\(domain)"
@@ -167,8 +167,8 @@ public class Google: OAuth2 {
 			// Add secure state token to session
 			// We expect to get this back from the auth
 			request.session?.data["state"] = rand.secureToken
-			let fb = Google(clientID: GoogleConfig.appid, clientSecret: GoogleConfig.secret)
-			response.redirect(path: fb.getLoginLink(state: request.session?.data["state"] as! String))
+			let gl = Google(clientID: GoogleConfig.appid, clientSecret: GoogleConfig.secret)
+			response.redirect(path: gl.getLoginLink(state: request.session?.data["state"] as! String))
 		}
 	}
 
