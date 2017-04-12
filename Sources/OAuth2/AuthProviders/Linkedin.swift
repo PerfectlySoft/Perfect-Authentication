@@ -9,7 +9,6 @@
 
 import Foundation
 import PerfectHTTP
-import TurnstileCrypto
 import PerfectSession
 
 /// Linkedin configuration singleton

@@ -9,7 +9,6 @@
 
 import Foundation
 import PerfectHTTP
-import TurnstileCrypto
 import PerfectSession
 
 /// Slack configuration singleton
