@@ -91,7 +91,7 @@ public class Google: OAuth2 {
 
 	/// Google-specific exchange function
 	public func exchange(request: HTTPRequest, state: String) throws -> OAuth2Token {
-		let token = try exchange(request: request, state: state, redirectURL: "\(GoogleConfig.endpointAfterAuth)?session=\((request.session?.token)!)")
+		let token = try exchange(request: request, state: state, redirectURL: "\(GoogleConfig.endpointAfterAuth)")
 
 		if let domain = GoogleConfig.restrictedDomain {
 			guard let hd = token.webToken?["hd"] as? String, hd == domain else {
@@ -104,7 +104,7 @@ public class Google: OAuth2 {
 
 	/// Google-specific login link
 	public func getLoginLink(state: String, request: HTTPRequest, scopes: [String] = ["profile"]) -> String {
-		var url = getLoginLink(redirectURL: "\(GoogleConfig.endpointAfterAuth)?session=\((request.session?.token)!)", state: state, scopes: scopes)
+		var url = getLoginLink(redirectURL: "\(GoogleConfig.endpointAfterAuth)", state: state, scopes: scopes)
 		if let domain = GoogleConfig.restrictedDomain {
 			url += "&hd=\(domain)"
 		}
