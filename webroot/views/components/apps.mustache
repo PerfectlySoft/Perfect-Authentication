@@ -1,0 +1,32 @@
+<h2>Applications</h2>
+
+{{msg}}
+
+<table class="amp">
+	<thead>
+		<tr>
+			<th>Name</th>
+			<th>AppID</th>
+			<th>Date Generated</th>
+			<th colspan="2">Valid</th>
+		</tr>
+	<thead>
+
+	<tbody>
+	{{#apps}}
+		<tr>
+			<td>{{name}}</td>
+			<td>{{appuuid}}</td>
+			<td>{{dategenerated}}</td>
+			<td><a href="#" class="makereq" data="/apps/{{appuuid}}/toggle" loc="/apps">{{valid}}</a></td>
+			<td class="largericons">
+				<a href="/apps/{{appuuid}}/edit"><span class="icon-pencil"></span></a>
+				<a href="/apps/{{appuuid}}/delete" class="deleteaction" dest="/apps"><span class="icon-trash"></span></a>
+			</td>
+		</tr>
+	{{/apps}}
+	<tbody>
+
+</table>
+
+<a href="/apps/create" class="button">Create Application</a>

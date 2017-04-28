@@ -1,0 +1,26 @@
+{{>header}}
+<div class="row" style="margin-top: 100px;">
+	<div class="col thirteen last push_three">
+
+	<h2 class="dmb">Register</h2>
+
+	<form action="/register" method="POST">
+
+		<fieldset>
+			<label class="above" for="username">Username</label>
+			<input type="text" id="username" name="username" placeholder="Username" />
+		</fieldset>
+
+		<fieldset>
+			<label class="above" for="email">Email</label>
+			<input type="text" id="email" name="email" placeholder="Email Address" />
+		</fieldset>
+
+		<input type="hidden" name="_csrf" value="{{csrfToken}}">
+		<button type="submit" class="dmt">Register</button>
+
+	</form>
+
+	</div>
+</div>
+{{>footer}}

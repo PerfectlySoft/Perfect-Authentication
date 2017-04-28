@@ -1,0 +1,56 @@
+<h2>Logs</h2>
+
+<div id="logtypebar" class="row">
+	<div class="col first two hpt hpb hpl hpr lcritical loglevel" loglevel="critical">[critical]</div>
+	<div class="col two hpt hpb hpl hpr lerror loglevel" loglevel="error">[error]</div>
+	<div class="col two hpt hpb hpl hpr lwarn loglevel" loglevel="warn">[warn]</div>
+	<div class="col two hpt hpb hpl hpr linfo loglevel" loglevel="info">[info]</div>
+	<div class="col two hpt hpb hpl hpr ldebug loglevel" loglevel="debug">[debug]</div>
+	<div class="col two hpt hpb hpl hpr lall loglevel" loglevel="all">[all]</div>
+
+</div>
+
+<table class="amp">
+	<thead id="loghead">
+		<tr>
+			<th class="one first">Level</th>
+			<th class="three">Date</th>
+			<th class="three">Event ID</th>
+			<th class="two">App ID</th>
+			<th class="seven last">Detail</th>
+		</tr>
+	<thead>
+
+	<tbody id="logview">
+		<tr>
+			<td colspan="5">Loading</td>
+		</tr>
+	<tbody>
+
+</table>
+
+
+<script>
+$(document).ready(function() {
+	var filter = {};
+	filter.token = "{{token}}";
+	amp.loadLog(filter,"{{sessionid}}");
+
+
+	$('.loglevel').on('click', function(){
+		if($(this).attr('loglevel') == "all") {
+			filter = setDefaultFilter();
+		} else {
+			filter.loglevel = $(this).attr('loglevel');
+		}
+		amp.loadLog(filter,"{{sessionid}}");
+	});
+});
+
+function setDefaultFilter() {
+	var f = {};
+	f.token = "{{token}}";
+	return f
+}
+
+</script>

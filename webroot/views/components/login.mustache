@@ -1,0 +1,28 @@
+<h2 class="dmb">Login</h2>
+
+{{#msg_body}}
+<div class="error pt pb">
+	<h3>{{msg_title}}</h3>
+	{{{msg_body}}}
+</div>
+{{/msg_body}}
+
+<form action="/login" method="POST">
+
+	<fieldset>
+		<label class="above" for="username">Username</label>
+		<input type="text" id="username" name="username" placeholder="Username" />
+	</fieldset>
+
+	<fieldset class="mt">
+		<label class="above" for="password">Password</label>
+		<input type="password" id="password" name="password" placeholder="Password" />
+	</fieldset>
+
+
+	<input type="hidden" name="_csrf" value="{{csrfToken}}">
+	<button type="submit" class="dmt">Login</button>
+
+</form>
+
+<p>Don't have an account? <a href="/register">Sign up here.</a></p>

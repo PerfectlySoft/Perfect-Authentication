@@ -1,0 +1,30 @@
+<h2>Tokens</h2>
+
+<table class="amp">
+	<thead>
+		<tr>
+			<th>Token Name</th>
+			<th>Token ID</th>
+			<th>Date Generated</th>
+			<th colspan="2">Valid</th>
+		</tr>
+	<thead>
+	
+	<tbody>
+	{{#tokens}}
+		<tr>
+			<td>{{name}}</td>
+			<td>{{token}}</td>
+			<td>{{dategenerated}}</td>
+			<td><a href="/tokens/{{token}}/toggle">{{valid}}</a></td>
+			<td class="largericons">
+				<a href="/tokens/{{token}}/edit"><span class="icon-pencil"></span></a>
+				<a href="/tokens/{{token}}/delete" class="deleteaction" dest="/tokens"><span class="icon-trash"></span></a>
+			</td>
+		</tr>
+	{{/tokens}}
+	<tbody>
+
+</table>
+
+<a href="/tokens/create" class="button">Create Token</a>

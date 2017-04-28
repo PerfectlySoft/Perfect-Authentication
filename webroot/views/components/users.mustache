@@ -1,0 +1,32 @@
+<h2>Users</h2>
+
+{{msg}}
+
+<table class="amp">
+	<thead>
+		<tr>
+			<th>Username</th>
+			<th>Name</th>
+			<th>Email</th>
+			<th>&nbsp;</th>
+		</tr>
+	<thead>
+
+	<tbody>
+	{{#users}}
+		<tr>
+			<td>{{username}}</td>
+			<td>{{firstname}} {{lastname}}</td>
+			<td>{{email}}</td>
+			<td class="largericons">
+				<a href="/users/{{uniqueid}}/edit"><span class="icon-pencil"></span></a>
+				<a href="/users/{{uniqueid}}/delete" class="deleteaction" dest="/users"><span class="icon-trash"></span></a>
+			</td>
+		</tr>
+	{{/users}}
+	<tbody>
+
+</table>
+
+<a href="/users/create" class="button">Create User</a>
+

@@ -1,0 +1,57 @@
+{{>header}}
+<div class="row" style="margin-top: 100px;">
+	<div class="col three first">{{>left}}</div>
+	<div class="col thirteen last">
+
+		{{^authenticated}}
+			{{>components/login}}
+		{{/authenticated}}
+
+		{{#authenticated}}
+
+<h2>Documentation</h2>
+
+<h3 class="mt">To log an event from your iOS app, macOS app, Android app, or Web app/site</h3>
+
+<p>Logging an event from your system to this log server is as simple as sending a POST request to a URL.</p>
+<p>The URL will be in the form <b>"{http://yourdomain.com}/api/v1/get/log/{token}"</b>.</p>
+<p>To get a "token", visit the <a href="/tokens">Tokens</a> section, and create a token. The token will have an "id" that will look like "9c92ce91-010d-44b5-a44b-c088591cfeab" - copy that and use! Just remember that tokens must be marked "valid" to work.</p>
+
+<p>"Expiring" a token will mean that events hitting your log server with that token will no longer be recorded.</p>
+
+<h3 class="mt">Applications</h3>
+
+<p>You can also group logs via "Applications". This means that you can assign an application several "tokens", or several applications to a token, and still see which application the event was triggered by.</p>
+
+<p>To set up applications, visit the <a href="/apps">Applications</a> section, and create an application. The new application will have an "id" that will look like "9c92ce91-010d-44b5-a44b-c088591cfeab" - copy that and use in your code! Just remember that tokens must be marked "valid" to work.</p>
+
+<h3 class="mt">Event "Payload"</h3>
+
+<p>When you send a POST request to your logging server, you also need to include a "payload" of information in the raw body of the request. This will look something like this:</p>
+
+<pre><code>{
+	"appuuid":"88049d67-c105-47de-b728-62fbec0a2f0c",
+	"eventid":"55049d67-c105-47de-b728-62fbec0a2f0c",
+	"loglevel": "warn",
+	"detail": {
+		"ip":"127.0.0.1",
+		"uuid":"88049d67-c105-47de-b728-62fbec0a2f0c",
+		"user":"user@example.com",
+		"header":"Event name, perhaps",
+		"msg":"Some informative message.",
+		"additional":"More detail?"
+	}
+}</code></pre>
+
+<p>The "appuuid", and "eventid" can be left empty, but the "loglevel" must be one of: debug, info, warn, error or critical.</p>
+<p>The "detail" section is flexible JSON - it can be any valid name/value JSON information you wish to log. You can put as little or as much in there but bear in mind that the more you store, the more will be displayed on the user interface!</p>
+
+<p class="dmb">&nbsp;</p>
+<p class="dmb">&nbsp;</p>
+
+		{{/authenticated}}
+
+
+	</div>
+</div>
+{{>footer}}

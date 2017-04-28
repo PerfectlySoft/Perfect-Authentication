@@ -1,0 +1,27 @@
+<h2>Tokens</h2>
+
+{{msg}}
+
+	<h3 class="mt">{{action}} Token</h3>
+
+	<form action="?" method="POST" id="appform">
+<input type="hidden" name="token" id="token" value="{{token}}">
+
+		<div class="row">
+			<label class="mt hmb">Name:</label>
+			<div class="col thirteen first">
+			<input type="text" name="name" id="createName" class="col six first hpl" required value="{{name}}">
+			</div>
+		</div>
+		<button type="submit" class="dmt">Save</button>
+		<a href="/tokens" class="button">Cancel</a>
+	</form>
+
+
+<script type='text/javascript' src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.15.0/jquery.validate.min.js"></script>
+<script type='text/javascript' src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.15.0/additional-methods.min.js"></script>
+
+<script>
+$("#appform").validate();
+</script>
+

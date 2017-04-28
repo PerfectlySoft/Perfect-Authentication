@@ -1,0 +1,12 @@
+{{^authenticated}}
+	{{>components/login}}
+{{/authenticated}}
+
+{{#authenticated}}
+{{#tokenlist?}}{{>components/tokens}}{{/tokenlist?}}
+
+{{#loglist?}}{{>components/logs}}{{/loglist?}}
+
+{{#applist?}}{{>components/apps}}{{/applist?}}
+
+{{/authenticated}}
