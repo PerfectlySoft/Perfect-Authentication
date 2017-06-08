@@ -15,7 +15,7 @@ import PerfectSessionPostgreSQL
 extension WebHandlers {
 
 	// POST request for login
-	static func login(data: [String:Any]) throws -> RequestHandler {
+	public static func login(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
 			var template = "views/msg" // where it goes to after

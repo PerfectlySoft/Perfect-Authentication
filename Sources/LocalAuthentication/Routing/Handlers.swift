@@ -8,7 +8,7 @@
 import PerfectHTTP
 import StORM
 
-class Handlers {
+public class LocalAuthHandlers {
 
 	static func error(_ request: HTTPRequest, _ response: HTTPResponse, error: String, code: HTTPResponseStatus = .badRequest) {
 		do {

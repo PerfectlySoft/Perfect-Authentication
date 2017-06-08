@@ -8,7 +8,7 @@
 
 import PerfectHTTPServer
 
-func mainAuthenticationRoutes() -> [[String: Any]] {
+public func mainAuthenticationRoutes() -> [[String: Any]] {
 
 	var routes: [[String: Any]] = [[String: Any]]()
 

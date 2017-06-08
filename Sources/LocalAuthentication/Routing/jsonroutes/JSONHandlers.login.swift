@@ -15,7 +15,7 @@ import PerfectSessionPostgreSQL
 extension JSONHandlers {
 	
 	// POST request for login form
-	static func login(data: [String:Any]) throws -> RequestHandler {
+	public static func login(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
 			if let i = request.session?.userid, !i.isEmpty {

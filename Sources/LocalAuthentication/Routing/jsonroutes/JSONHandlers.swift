@@ -7,6 +7,6 @@
 //
 
 // Stub for JSON Route Handlers
-class JSONHandlers {
+public class JSONHandlers {
 
 }

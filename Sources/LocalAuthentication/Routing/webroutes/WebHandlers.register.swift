@@ -15,7 +15,7 @@ import PerfectSessionPostgreSQL
 extension WebHandlers {
 
 	// Register GET - displays form
-	static func register(data: [String:Any]) throws -> RequestHandler {
+	public static func register(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
 			if let i = request.session?.userid, !i.isEmpty { response.redirect(path: "/") }
@@ -29,7 +29,7 @@ extension WebHandlers {
 
 
 	// POST request for register form
-	static func registerPost(data: [String:Any]) throws -> RequestHandler {
+	public static func registerPost(data: [String:Any]) throws -> RequestHandler {
 		return {
 			request, response in
 			if let i = request.session?.userid, !i.isEmpty { response.redirect(path: "/") }

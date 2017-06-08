@@ -42,7 +42,7 @@ extension HTTPResponse {
 
 }
 
-struct AuthenticationVariables {
+public struct AuthenticationVariables {
 	public static var baseURL = ""
 
 }
