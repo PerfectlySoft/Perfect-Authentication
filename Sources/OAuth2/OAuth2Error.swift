@@ -24,7 +24,7 @@ public struct OAuth2Error: Error {
     }
     
     /// Convenience initializer from JSON
-    init?(json: [String: Any]) {
+    public init?(json: [String: Any]) {
         guard let errorCode = json["error"] as? String,
               let code = OAuth2ErrorCode(rawValue: errorCode) else {
                 return nil
