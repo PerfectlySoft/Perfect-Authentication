@@ -23,7 +23,7 @@ extension OAuth2 {
 	/// - body: The JSON formatted sring to sent to the server
 	/// Response:
 	/// (HTTPResponseStatus, "data" - [String:Any], "raw response" - [String:Any], HTTPHeaderParser)
-	func makeRequest(
+	open func makeRequest(
 		_ method: HTTPMethod,
 		_ url: String,
 		body: String = "",
