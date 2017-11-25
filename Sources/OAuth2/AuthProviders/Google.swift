@@ -22,7 +22,6 @@
 
 import Foundation
 import PerfectHTTP
-import TurnstileCrypto
 import PerfectSession
 
 /// Google configuration singleton

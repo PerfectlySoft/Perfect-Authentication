@@ -8,7 +8,6 @@
 
 import Foundation
 import PerfectHTTP
-import TurnstileCrypto
 import PerfectSession
 
 /// SalesForce configuration singleton

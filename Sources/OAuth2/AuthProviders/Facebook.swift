@@ -20,7 +20,6 @@
 
 import Foundation
 import PerfectHTTP
-import TurnstileCrypto
 import PerfectSession
 
 /// Facebook configuration singleton
