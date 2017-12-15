@@ -60,8 +60,8 @@ public class OAuth2Token {
 			let arr = id.components(separatedBy: ".")
 
 			var content = arr[1] as String
-			if content.characters.count % 4 != 0 {
-				let padlen = 4 - content.characters.count % 4
+			if content.count % 4 != 0 {
+				let padlen = 4 - content.count % 4
 				content += String(repeating: "=", count: padlen)
 			}
 
