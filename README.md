@@ -15,7 +15,8 @@
 [![Join the chat at https://gitter.im/PerfectlySoft/Perfect](https://img.shields.io/badge/Gitter-Join%20Chat-brightgreen.svg)](https://gitter.im/PerfectlySoft/Perfect?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Slack Status](http://perfect.ly/badge.svg)](http://perfect.ly) [![GitHub version](https://badge.fury.io/gh/PerfectlySoft%2FPerfect-CURL.svg)](https://badge.fury.io/gh/PerfectlySoft%2FPerfect-CURL)
 
-## OAuth2 Library for Perfect
+## FYI, This repo has been moved to [Perfect-OAuth2](PerfectlySoft/Perfect-OAuth2)
+
 
 
 This project provides [OAuth2](https://oauth.net/2/) libraries and select OAuth2 provider drivers - Facebook, Google, GitHub.
