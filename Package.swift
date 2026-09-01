@@ -1,27 +1,23 @@
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
-    name: "Perfect-Authentication",
+    name: "PerfectAuthentication",
+    platforms: [.macOS(.v12)],
+    products: [
+        .library(name: "PerfectOAuth2", targets: ["PerfectOAuth2"]),
+    ],
     targets: [
-		Target(name: "OAuth2"),
-		Target(
-			name: "LocalAuthentication",
-			dependencies: []
-		)
-		],
-    dependencies: [
-		.Package(url: "https://github.com/PerfectlySoft/PerfectLib.git", majorVersion: 2),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-HTTP.git", majorVersion: 2),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-Logger.git", majorVersion: 1),
-		.Package(url: "https://github.com/iamjono/SwiftString.git", majorVersion: 2),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-Session.git", majorVersion: 1),
-
-		.Package(url: "https://github.com/iamjono/JSONConfig.git", majorVersion: 1),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-RequestLogger.git", majorVersion: 1),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-SMTP", majorVersion: 1),
-		.Package(url: "https://github.com/SwiftORM/Postgres-StORM.git", majorVersion: 1),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-Session-PostgreSQL.git", majorVersion: 1),
-		.Package(url: "https://github.com/PerfectlySoft/Perfect-Mustache.git", majorVersion: 2),
-		]
-
+        .target(
+            name: "PerfectOAuth2",
+            path: "Sources/PerfectOAuth2",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "PerfectOAuth2Tests",
+            dependencies: ["PerfectOAuth2"],
+            path: "Tests/PerfectOAuth2Tests",
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+    ]
 )
