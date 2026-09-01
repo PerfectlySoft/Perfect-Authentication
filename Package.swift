@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PerfectAuthentication",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v12)],
     products: [
         .library(name: "PerfectOAuth2", targets: ["PerfectOAuth2"]),
     ],

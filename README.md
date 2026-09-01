@@ -1,22 +1,33 @@
 # PerfectOAuth2
 
-Swift 6 OAuth2 client library with providers for Google, GitHub, Facebook, Slack, LinkedIn, and Salesforce. No external dependencies — Foundation and URLSession only.
+<p align="center">
+    <img src="https://img.shields.io/badge/Swift-6.2-orange.svg?style=flat" alt="Swift 6.2">
+    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B-lightgray.svg?style=flat" alt="Platforms macOS 12+">
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0"></a>
+</p>
 
-**Requirements:** swift-tools-version 6.2, macOS 26+ (`platforms: [.macOS(.v26)]` in Package.swift). No iOS/Linux/tvOS/watchOS platform is declared. Both the library and test targets build under `swiftLanguageMode(.v6)` (strict concurrency).
+Swift 6 OAuth2 client library with providers for Google, GitHub, Facebook, Slack, LinkedIn, and
+Salesforce. No external dependencies — Foundation and URLSession only. Both library and test
+targets build under strict concurrency.
 
-**Resurrection status:** Complete for `PerfectOAuth2` — the only target Package.swift builds. Original `Perfect-Authentication` (Swift 3, PerfectCURL, PerfectHTTP) rewritten for Swift 6 strict concurrency.
+**Note the naming:** this repo is `Perfect-Authentication`, but the package is
+`PerfectAuthentication` and the library product you import is `PerfectOAuth2`.
 
-**Ecosystem status:** Staged, not yet integrated. This package is standalone infrastructure — a cross-checked grep across `Perfect-Resurrection` confirms no other repo currently depends on it (no `Package.swift` in the ecosystem references `PerfectOAuth2` or `Perfect-Authentication`). It is finished and tested, awaiting a consumer (e.g. a future `PerfectNIOOAuth2` wrapper in Perfect-NIO — see Future work below), not dead or abandoned code.
+**Ecosystem status:** standalone infrastructure — nothing else here currently depends on it. It's
+finished and tested, awaiting a consumer (e.g. a future `PerfectNIOOAuth2` wrapper in Perfect-NIO),
+not dead or abandoned code.
 
-**Legacy source directories (unbuilt):** `Sources/` contains two directories not referenced by any target in Package.swift, kept for reference only:
+**Legacy source directories (unbuilt):** `Sources/` contains two directories not referenced by any
+target in `Package.swift`, kept for reference only:
 - `Sources/OAuth2/` — the pre-resurrection Swift 3 original (imports `PerfectHTTP`), superseded by `Sources/PerfectOAuth2/`. Note that `OAuth2.swift` exists in both directories; only the one under `Sources/PerfectOAuth2/` is live.
 - `Sources/LocalAuthentication/` — a username/password local-auth system, deliberately left un-resurrected. See Future work below.
+
+The pre-Swift-6 version of this package is preserved on the [`legacy`](../../tree/legacy) branch.
 
 ## Package
 
 ```swift
-// Package.swift
-.package(path: "../Perfect-Authentication"),
+.package(url: "https://github.com/PerfectlySoft/Perfect-Authentication.git", branch: "main"),
 
 // target dependency
 .product(name: "PerfectOAuth2", package: "Perfect-Authentication"),
