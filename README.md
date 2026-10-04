@@ -17,12 +17,9 @@ targets build under strict concurrency.
 finished and tested, awaiting a consumer (e.g. a future `PerfectNIOOAuth2` wrapper in Perfect-NIO),
 not dead or abandoned code.
 
-**Legacy source directories (unbuilt):** `Sources/` contains two directories not referenced by any
-target in `Package.swift`, kept for reference only:
-- `Sources/OAuth2/` — the pre-resurrection Swift 3 original (imports `PerfectHTTP`), superseded by `Sources/PerfectOAuth2/`. Note that `OAuth2.swift` exists in both directories; only the one under `Sources/PerfectOAuth2/` is live.
-- `Sources/LocalAuthentication/` — a username/password local-auth system, deliberately left un-resurrected. See Future work below.
-
-The pre-Swift-6 version of this package is preserved on the [`legacy`](../../tree/legacy) branch.
+The pre-Swift-6 version of this package, including the original Swift 3 `OAuth2` target and the
+un-resurrected `LocalAuthentication` username/password system, is preserved on the
+[`legacy`](https://github.com/PerfectlySoft/Perfect-Authentication/tree/legacy) branch.
 
 ## Package
 
@@ -148,6 +145,28 @@ let token = try await provider.exchange(code: code, state: state, sessionToken: 
 let userdata = await provider.getUserData(token.accessToken)
 ```
 
+### Refreshing an access token
+
+If the provider issued a refresh token, exchange it for a new access token with `refresh`
+(the RFC 6749 `refresh_token` grant):
+
+```swift
+let provider = Google(clientID: GoogleConfig.appid, clientSecret: GoogleConfig.secret)
+let token = try await provider.refresh(refreshToken: storedRefreshToken)
+// token.refreshToken is the rotated refresh token if the provider sent one,
+// otherwise the one you passed in, so it can always be stored back.
+```
+
+`scopes` optionally narrows the request to a subset of the originally granted scopes.
+`includeClientSecret` defaults to `true`, which Google, Salesforce and LinkedIn require; pass
+`false` for public clients that authenticate with `client_id` only. A rejected refresh token usually throws
+`OAuth2Error` with code `.invalidGrant`; providers that answer with non-standard error codes (GitHub's
+`bad_refresh_token`, Slack's `{"ok":false}`) surface as `InvalidAPIResponse` instead.
+
+Not every provider issues refresh tokens: GitHub OAuth apps and Facebook don't. Google only does
+when the login link requests offline access (`access_type=offline`), and Salesforce only when the
+`refresh_token` scope is granted.
+
 ## Providers
 
 | Provider   | Default scopes                     | Notes |
@@ -176,9 +195,9 @@ do {
 
 ## Future work
 
-- **LocalAuthentication target** — the original package included a username/password auth system (account schema, email verification, SMTP). It was not resurrected because it depends on `Perfect-SMTP` and `Perfect-Mustache`, neither of which are resurrected yet. The source lives in `Sources/LocalAuthentication/` if that work is ever picked up.
+- **LocalAuthentication target** — the original package included a username/password auth system (account schema, email verification, SMTP). It was not resurrected because it depends on `Perfect-SMTP` and `Perfect-Mustache`. The source is on the [`legacy`](https://github.com/PerfectlySoft/Perfect-Authentication/tree/legacy) branch if that work is ever picked up.
 
-- **Token refresh** — `OAuth2Token.refreshToken` is captured from the provider response but there is no `refresh(token:)` method on the base class or providers. Implement when long-lived sessions are needed.
+- **Google offline access** — `Google.loginURL` doesn't send `access_type=offline`, so Google won't issue a refresh token through it. Add an option for it when long-lived sessions are needed.
 
 - **LinkedIn email scope** — add `email` to the default scopes and extract `email` from the `/v2/userinfo` response if email is needed.
 
@@ -187,8 +206,6 @@ do {
 - **Facebook Graph API version** — the profile-fetch endpoint (`getUserData`) uses `v2.8`, but the token-exchange endpoint (`Facebook.swift`) is still pinned to the older `v2.3`. Facebook's minimum supported version changes over time; bump both to a current version (v21+) when updating.
 
 - **NIO session middleware integration** — the OAuth callback pattern (extract code/state, call processAuthResponse, write to session, redirect) is repetitive. A `PerfectNIOOAuth2` target in Perfect-NIO could provide pre-wired route handlers that accept a session driver and config. This is also the natural point at which this package would move from staged to actively consumed.
-
-- **Orphaned Swift 3 test file** — `Tests/AuthTests/AuthProvidersTests.swift` predates the Swift 6 resurrection (`@testable import AuthProviders`, `static var allTests`), is not referenced by any target in Package.swift, and `swift test` silently ignores it. It contains a hardcoded GitHub `clientID`/`clientSecret` pair inherited from the original Turnstile-derived code — almost certainly a dummy fixture rather than a real credential, but it should be verified and either removed or annotated as such, and the file itself should be deleted or wired into a target.
 
 ## License
 
