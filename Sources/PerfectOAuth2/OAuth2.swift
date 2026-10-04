@@ -53,4 +53,48 @@ open class OAuth2: @unchecked Sendable {
     open func exchange(code: String, state: String, redirectURL: String) async throws -> OAuth2Token {
         return try await exchange(authorizationCode: AuthorizationCode(code: code, redirectURL: redirectURL))
     }
+
+    /// Obtains a new access token using a refresh token (RFC 6749 §6).
+    ///
+    /// Many providers (Google among them) omit `refresh_token` from the refresh response; in that case
+    /// the returned token carries the `refreshToken` passed in, so it can be stored as-is.
+    ///
+    /// - Parameters:
+    ///   - refreshToken: the refresh token issued with an earlier access token.
+    ///   - scopes: optional subset of the originally granted scopes; omitted from the request when empty.
+    ///   - includeClientSecret: send `client_secret` in the body. Confidential clients (Google,
+    ///     Salesforce, LinkedIn) need it; pass `false` for public clients that only send `client_id`.
+    ///
+    /// Provider-specific checks done at exchange time (e.g. Google's `restrictedDomain`) are not
+    /// repeated here; the refresh token already came from a checked exchange.
+    ///
+    /// - Throws: `OAuth2Error` if the provider returns an RFC 6749 error code, otherwise `InvalidAPIResponse`.
+    open func refresh(
+        refreshToken: String,
+        scopes: [String] = [],
+        includeClientSecret: Bool = true
+    ) async throws -> OAuth2Token {
+        var postBody = [
+            "grant_type": "refresh_token",
+            "client_id": clientID,
+            "refresh_token": refreshToken,
+        ]
+        if !scopes.isEmpty {
+            postBody["scope"] = scopes.joined(separator: " ")
+        }
+        if includeClientSecret {
+            postBody["client_secret"] = clientSecret
+        }
+        var data = await makeRequest(.post, tokenURL, body: urlencode(dict: postBody), encoding: "form")
+        if data["access_token"] != nil, data["refresh_token"] == nil {
+            data["refresh_token"] = refreshToken
+        }
+        guard let token = OAuth2Token(json: data) else {
+            if let error = OAuth2Error(json: data) {
+                throw error
+            }
+            throw InvalidAPIResponse()
+        }
+        return token
+    }
 }
