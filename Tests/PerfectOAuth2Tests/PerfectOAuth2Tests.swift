@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import PerfectOAuth2
 
@@ -173,6 +174,42 @@ struct ProviderURLTests {
         let url = g.loginURL(state: "state", sessionToken: "tok")
         #expect(url.contains("hd=mycompany.com"))
         GoogleConfig.restrictedDomain = nil
+    }
+
+    @Test func googleLoginURLOmitsOfflineAccessByDefault() throws {
+        GoogleConfig.appid = "google_id"
+        GoogleConfig.secret = "google_secret"
+        GoogleConfig.endpointAfterAuth = "https://myapp.com/auth/google"
+        GoogleConfig.restrictedDomain = nil
+        let url = Google(clientID: "google_id", clientSecret: "google_secret")
+            .loginURL(state: "state", sessionToken: "tok")
+        let items = try #require(URLComponents(string: url)?.queryItems)
+        #expect(!items.contains { $0.name == "access_type" || $0.name == "prompt" })
+        #expect(url == Google.loginURL(state: "state", sessionToken: "tok", offlineAccess: false))
+        // The pre-existing three-argument signatures still work as function references.
+        let instanceRef: (String, String, [String]) -> String = Google(clientID: "google_id", clientSecret: "google_secret").loginURL
+        let staticRef: (String, String, [String]) -> String = Google.loginURL
+        #expect(instanceRef("state", "tok", ["profile"]) == url)
+        #expect(staticRef("state", "tok", ["profile"]) == url)
+    }
+
+    @Test func googleLoginURLRequestsOfflineAccess() throws {
+        GoogleConfig.appid = "google_id"
+        GoogleConfig.secret = "google_secret"
+        GoogleConfig.endpointAfterAuth = "https://myapp.com/auth/google"
+        GoogleConfig.restrictedDomain = "mycompany.com"
+        defer { GoogleConfig.restrictedDomain = nil }
+        let instanceURL = Google(clientID: "google_id", clientSecret: "google_secret")
+            .loginURL(state: "state", sessionToken: "tok", offlineAccess: true)
+        let staticURL = Google.loginURL(state: "state", sessionToken: "tok", offlineAccess: true)
+        #expect(instanceURL == staticURL)
+        let items = try #require(URLComponents(string: instanceURL)?.queryItems)
+        let query = Dictionary(items.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })
+        #expect(items.count == query.count)  // no duplicated parameters
+        #expect(query["access_type"] == "offline")
+        #expect(query["prompt"] == "consent")
+        #expect(query["hd"] == "mycompany.com")
+        #expect(query["client_id"] == "google_id")
     }
 
     @Test func githubLoginURLContainsExpectedParams() {

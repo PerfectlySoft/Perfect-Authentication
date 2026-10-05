@@ -31,11 +31,31 @@ public class Google: OAuth2, @unchecked Sendable {
         return out
     }
 
+    /// Builds the Google sign-in link without requesting offline access.
     public func loginURL(state: String, sessionToken: String, scopes: [String] = ["profile"]) -> String {
+        loginURL(state: state, sessionToken: sessionToken, scopes: scopes, offlineAccess: false)
+    }
+
+    /// Builds the Google sign-in link.
+    ///
+    /// - Parameter offlineAccess: request a refresh token. Adds `access_type=offline` and
+    ///   `prompt=consent`: Google only issues a refresh token the first time a user grants offline
+    ///   access or when consent is prompted again, so without `prompt=consent` a returning user would
+    ///   get none. Pass `false` for ordinary sign-ins once a refresh token is stored, so users aren't
+    ///   asked to consent every time.
+    public func loginURL(
+        state: String,
+        sessionToken: String,
+        scopes: [String] = ["profile"],
+        offlineAccess: Bool
+    ) -> String {
         let redirectURL = "\(GoogleConfig.endpointAfterAuth)?session=\(sessionToken)"
         var url = getLoginLink(redirectURL: redirectURL, state: state, scopes: scopes)
         if let domain = GoogleConfig.restrictedDomain {
             url += "&hd=\(domain)"
+        }
+        if offlineAccess {
+            url += "&access_type=offline&prompt=consent"
         }
         return url
     }
@@ -56,8 +76,17 @@ public class Google: OAuth2, @unchecked Sendable {
     }
 
     public static func loginURL(state: String, sessionToken: String, scopes: [String] = ["profile"]) -> String {
+        loginURL(state: state, sessionToken: sessionToken, scopes: scopes, offlineAccess: false)
+    }
+
+    public static func loginURL(
+        state: String,
+        sessionToken: String,
+        scopes: [String] = ["profile"],
+        offlineAccess: Bool
+    ) -> String {
         Google(clientID: GoogleConfig.appid, clientSecret: GoogleConfig.secret)
-            .loginURL(state: state, sessionToken: sessionToken, scopes: scopes)
+            .loginURL(state: state, sessionToken: sessionToken, scopes: scopes, offlineAccess: offlineAccess)
     }
 
     public static func processAuthResponse(

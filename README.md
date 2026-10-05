@@ -93,6 +93,8 @@ let g = Google(clientID: GoogleConfig.appid, clientSecret: GoogleConfig.secret)
 let url = g.loginURL(state: csrf, sessionToken: session.token, scopes: ["profile", "email"])
 ```
 
+To get a Google refresh token, pass `offlineAccess: true` (see [Refreshing an access token](#refreshing-an-access-token)).
+
 ### Step 2: Handle the callback
 
 ```swift
@@ -163,9 +165,18 @@ let token = try await provider.refresh(refreshToken: storedRefreshToken)
 `OAuth2Error` with code `.invalidGrant`; providers that answer with non-standard error codes (GitHub's
 `bad_refresh_token`, Slack's `{"ok":false}`) surface as `InvalidAPIResponse` instead.
 
-Not every provider issues refresh tokens: GitHub OAuth apps and Facebook don't. Google only does
-when the login link requests offline access (`access_type=offline`), and Salesforce only when the
-`refresh_token` scope is granted.
+Not every provider issues refresh tokens: GitHub OAuth apps and Facebook don't, and Salesforce only
+does when the `refresh_token` scope is granted. Google issues one the first time a user grants
+offline access, and afterwards only when consent is prompted again. `offlineAccess: true` adds both
+`access_type=offline` and `prompt=consent`:
+
+```swift
+let url = Google.loginURL(state: csrf, sessionToken: session.token, offlineAccess: true)
+```
+
+Use it when you need a refresh token (first sign-in, or when the stored one is lost or revoked), and
+leave it off for routine sign-ins so users aren't asked to consent every time. While a Google Cloud
+app's publishing status is "Testing", Google expires its refresh tokens after 7 days.
 
 ## Providers
 
@@ -196,8 +207,6 @@ do {
 ## Future work
 
 - **LocalAuthentication target** — the original package included a username/password auth system (account schema, email verification, SMTP). It was not resurrected because it depends on `Perfect-SMTP` and `Perfect-Mustache`. The source is on the [`legacy`](https://github.com/PerfectlySoft/Perfect-Authentication/tree/legacy) branch if that work is ever picked up.
-
-- **Google offline access** — `Google.loginURL` doesn't send `access_type=offline`, so Google won't issue a refresh token through it. Add an option for it when long-lived sessions are needed.
 
 - **LinkedIn email scope** — add `email` to the default scopes and extract `email` from the `/v2/userinfo` response if email is needed.
 
