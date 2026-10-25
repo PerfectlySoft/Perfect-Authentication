@@ -47,7 +47,7 @@ final class LocalHTTPServer: @unchecked Sendable {
         #else
         let fd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         #endif
-        guard fd >= 0 else { throw POSIXError(.EIO) }
+        guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         var one: Int32 = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, socklen_t(MemoryLayout<Int32>.size))
         var address = sockaddr_in()
@@ -63,8 +63,9 @@ final class LocalHTTPServer: @unchecked Sendable {
             }
         }
         guard bound == 0, listen(fd, 64) == 0 else {
+            let code = POSIXErrorCode(rawValue: errno) ?? .EIO
             close(fd)
-            throw POSIXError(.EADDRINUSE)
+            throw POSIXError(code)
         }
         var length = socklen_t(MemoryLayout<sockaddr_in>.size)
         _ = withUnsafeMutablePointer(to: &address) {
@@ -76,23 +77,33 @@ final class LocalHTTPServer: @unchecked Sendable {
         thread.start()
     }
 
+    /// Idempotent, and never touches a descriptor this server no longer owns: closing the listener
+    /// twice, or shutting down a client socket after its handler closed it, would hit whatever
+    /// socket reused that number (another test's server or connection).
     func stop() {
-        let fds: [Int32] = lock.withLock {
+        lock.withLock {
+            if stopped { return }
             stopped = true
-            defer { clients = [] }
-            return clients
+            // The accept thread notices `stopped` within one poll interval and closes the listener
+            // itself, so no thread can accept() on a number that has been reused.
+            // Handlers close their sockets under this lock, so these are still ours.
+            for fd in clients { shutdown(fd, Int32(SHUT_RDWR)) }
         }
-        shutdown(listener, Int32(SHUT_RDWR))
-        close(listener)
-        for fd in fds { shutdown(fd, Int32(SHUT_RDWR)) }
     }
 
     deinit { stop() }
 
     private func acceptLoop() {
+        defer { close(listener) }
         while true {
+            if lock.withLock({ stopped }) { return }
+            var pfd = pollfd(fd: listener, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&pfd, 1, 50)
+            if ready < 0 && errno != EINTR { return }
+            if ready <= 0 { continue }
+            if lock.withLock({ stopped }) { return }
             let client = accept(listener, nil, nil)
-            if client < 0 { return }
+            if client < 0 { continue }
             #if canImport(Darwin)
             var one: Int32 = 1
             setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
@@ -102,15 +113,17 @@ final class LocalHTTPServer: @unchecked Sendable {
                 clients.append(client)
                 return true
             }
-            guard accepted else { close(client); return }
+            guard accepted else { close(client); return }  // the deferred close(listener) follows
             Thread { [self] in handle(client) }.start()
         }
     }
 
     private func handle(_ fd: Int32) {
         defer {
-            lock.withLock { clients.removeAll { $0 == fd } }
-            close(fd)
+            lock.withLock {
+                clients.removeAll { $0 == fd }
+                close(fd)
+            }
         }
         guard let request = readRequest(fd) else { return }
         lock.withLock { received.append(request) }
