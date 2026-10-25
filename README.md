@@ -150,9 +150,10 @@ with `<redacted>`.
 
 On Darwin, cancelling at the size limit stops the download. On Linux, the call also returns as soon
 as the limit is passed, but corelibs Foundation can go on reading and discarding the rest of the body
-in the background for a while. In testing against an endless local body, every call returned within
-0.03 s and peak memory stayed under 180 MB, though the background read consumed up to 2 GB of
-loopback traffic. Provider responses are small and come from the providers' own HTTPS endpoints, so
+in the background for a while. In testing against an endless local body, each call returned within
+0.03 s of reaching the cap and peak memory stayed under 180 MB, though the background read consumed
+up to 2 GB of loopback traffic. Corelibs FoundationNetworking also leaks about 76 bytes per request
+(seen with LeakSanitizer), which is negligible at sign-in volumes. Provider responses are small and come from the providers' own HTTPS endpoints, so
 this only matters if one of them is compromised. If you need a hard bound, plug in your own
 transport (for example on AsyncHTTPClient) through `OAuth2HTTPOptions(transport:)`.
 
