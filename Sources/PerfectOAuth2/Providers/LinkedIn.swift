@@ -1,66 +1,41 @@
 import Foundation
 
-public struct LinkedinConfig {
-    nonisolated(unsafe) public static var appid = ""
-    nonisolated(unsafe) public static var secret = ""
-    nonisolated(unsafe) public static var endpointAfterAuth = ""
-    nonisolated(unsafe) public static var redirectAfterAuth = ""
-    public init() {}
-}
+/// Sign In with LinkedIn using OpenID Connect.
+///
+/// - Endpoints: `www.linkedin.com/oauth/v2/authorization`, `www.linkedin.com/oauth/v2/accessToken`,
+///   and the OIDC userinfo endpoint `api.linkedin.com/v2/userinfo` (the `r_liteprofile` APIs are gone).
+/// - Default scopes `openid profile`; add `email` for `email`/`email_verified`.
+/// - PKCE off by default: LinkedIn documents PKCE only for its native-client flow, which needs
+///   LinkedIn's approval, so web apps should leave it off.
+public final class LinkedIn: OAuth2Provider {
+    public let oauth2: OAuth2
+    public let loginType = "linkedin"
 
-public class Linkedin: OAuth2, @unchecked Sendable {
-    public init(clientID: String, clientSecret: String) {
-        super.init(
-            clientID: clientID,
-            clientSecret: clientSecret,
-            authorizationURL: "https://www.linkedin.com/oauth/v2/authorization",
-            tokenURL: "https://www.linkedin.com/oauth/v2/accessToken"
+    static let userInfoURL = URL(string: "https://api.linkedin.com/v2/userinfo")!
+
+    public init(configuration: OAuth2ClientConfiguration) {
+        oauth2 = OAuth2(
+            configuration: configuration,
+            authorizationURL: URL(string: "https://www.linkedin.com/oauth/v2/authorization")!,
+            tokenURL: URL(string: "https://www.linkedin.com/oauth/v2/accessToken")!,
+            defaultScopes: ["openid", "profile"],
+            usesPKCEByDefault: false
         )
     }
 
-    // Uses LinkedIn OpenID Connect userinfo endpoint (v2, requires openid + profile scopes)
-    public func getUserData(_ accessToken: String) async -> [String: Any] {
-        let data = await makeRequest(.get, "https://api.linkedin.com/v2/userinfo", bearerToken: accessToken)
-        var out = [String: Any]()
-        if let n = data["sub"] as? String { out["userid"] = n }
-        if let n = data["given_name"] as? String { out["first_name"] = n }
-        if let n = data["family_name"] as? String { out["last_name"] = n }
-        if let n = data["picture"] as? String { out["picture"] = n }
-        return out
-    }
-
-    public func loginURL(state: String, sessionToken: String, scopes: [String] = ["openid", "profile"]) -> String {
-        let redirectURL = LinkedinConfig.endpointAfterAuth
-        return getLoginLink(redirectURL: redirectURL, state: state, scopes: scopes)
-    }
-
-    public func exchange(code: String, state: String, sessionToken: String) async throws -> OAuth2Token {
-        return try await exchange(code: code, state: state, redirectURL: LinkedinConfig.endpointAfterAuth)
-    }
-
-    public static func loginURL(state: String, sessionToken: String, scopes: [String] = ["openid", "profile"]) -> String {
-        Linkedin(clientID: LinkedinConfig.appid, clientSecret: LinkedinConfig.secret)
-            .loginURL(state: state, sessionToken: sessionToken, scopes: scopes)
-    }
-
-    public static func processAuthResponse(
-        code: String,
-        state: String,
-        sessionCSRF: String,
-        sessionToken: String
-    ) async throws -> OAuthUserProfile {
-        guard state == sessionCSRF else { throw OAuth2Error(code: .unsupportedResponseType) }
-        let provider = Linkedin(clientID: LinkedinConfig.appid, clientSecret: LinkedinConfig.secret)
-        let token = try await provider.exchange(code: code, state: state, sessionToken: sessionToken)
-        let userdata = await provider.getUserData(token.accessToken)
-        return OAuthUserProfile(
-            userid: userdata["userid"] as? String ?? "",
-            firstName: userdata["first_name"] as? String,
-            lastName: userdata["last_name"] as? String,
-            picture: userdata["picture"] as? String,
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            loginType: "linkedin"
+    public func fetchProfile(token: OAuth2Token) async throws -> OAuthUserProfile {
+        let info = try await oauth2.getJSON(Self.userInfoURL, accessToken: token.accessToken)
+        return try OAuthUserProfile(
+            userid: info["sub"]?.stringValue,
+            firstName: info["given_name"]?.stringValue,
+            lastName: info["family_name"]?.stringValue,
+            displayName: info["name"]?.stringValue,
+            picture: info["picture"]?.stringValue,
+            email: info["email"]?.stringValue,
+            emailVerified: info["email_verified"]?.boolValue == true,
+            loginType: loginType,
+            token: token,
+            raw: info
         )
     }
 }

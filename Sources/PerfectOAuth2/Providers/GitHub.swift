@@ -1,69 +1,57 @@
 import Foundation
 
-public struct GitHubConfig {
-    nonisolated(unsafe) public static var appid = ""
-    nonisolated(unsafe) public static var secret = ""
-    nonisolated(unsafe) public static var endpointAfterAuth = ""
-    nonisolated(unsafe) public static var redirectAfterAuth = ""
-    public init() {}
+/// GitHub OAuth apps (and GitHub Apps' user authorization).
+///
+/// - Endpoints: `github.com/login/oauth/authorize`, `github.com/login/oauth/access_token`, and the
+///   REST API's `api.github.com/user`.
+/// - Default scope `read:user` (1.x requested `user`, which also grants profile *write* access).
+/// - PKCE on by default (GitHub added S256 support in 2025).
+/// - GitHub reports token errors with HTTP 200 and an `error` field; they surface as
+///   `OAuth2Error.providerError` (e.g. `bad_verification_code`).
+/// - `email` is the public profile email and is never marked verified; use the `user:email` scope and
+///   `GET /user/emails` if you need a verified address.
+public final class GitHub: OAuth2Provider {
+    public let oauth2: OAuth2
+    public let loginType = "github"
+
+    static let userURL = URL(string: "https://api.github.com/user")!
+
+    public init(configuration: OAuth2ClientConfiguration) {
+        oauth2 = OAuth2(
+            configuration: configuration,
+            authorizationURL: URL(string: "https://github.com/login/oauth/authorize")!,
+            tokenURL: URL(string: "https://github.com/login/oauth/access_token")!,
+            defaultScopes: ["read:user"],
+            usesPKCEByDefault: true
+        )
+    }
+
+    public func fetchProfile(token: OAuth2Token) async throws -> OAuthUserProfile {
+        let user = try await oauth2.getJSON(Self.userURL, accessToken: token.accessToken, headers: [
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        ])
+        let name = user["name"]?.stringValue
+        let (first, last) = splitName(name)
+        return try OAuthUserProfile(
+            userid: user["id"]?.identifierValue,
+            firstName: first,
+            lastName: last,
+            displayName: name ?? user["login"]?.stringValue,
+            picture: user["avatar_url"]?.stringValue,
+            email: user["email"]?.stringValue,
+            emailVerified: false,
+            loginType: loginType,
+            token: token,
+            raw: user
+        )
+    }
 }
 
-public class GitHub: OAuth2, @unchecked Sendable {
-    public init(clientID: String, clientSecret: String) {
-        super.init(
-            clientID: clientID,
-            clientSecret: clientSecret,
-            authorizationURL: "https://github.com/login/oauth/authorize",
-            tokenURL: "https://github.com/login/oauth/access_token"
-        )
-    }
-
-    public func getUserData(_ accessToken: String) async -> [String: Any] {
-        let data = await makeRequest(.get, "https://api.github.com/user", bearerToken: accessToken)
-        var out = [String: Any]()
-        if let n = data["id"] { out["userid"] = "\(n)" }
-        if let n = data["name"] as? String {
-            let parts = n.components(separatedBy: " ")
-            if !parts.isEmpty { out["first_name"] = parts.first }
-            if parts.count > 1 { out["last_name"] = parts.last }
-        }
-        if let n = data["avatar_url"] as? String { out["picture"] = n }
-        return out
-    }
-
-    public func loginURL(state: String, sessionToken: String, scopes: [String] = []) -> String {
-        let redirectURL = "\(GitHubConfig.endpointAfterAuth)?session=\(sessionToken)"
-        return getLoginLink(redirectURL: redirectURL, state: state, scopes: scopes)
-    }
-
-    public func exchange(code: String, state: String, sessionToken: String) async throws -> OAuth2Token {
-        let redirectURL = "\(GitHubConfig.endpointAfterAuth)?session=\(sessionToken)"
-        return try await exchange(code: code, state: state, redirectURL: redirectURL)
-    }
-
-    public static func loginURL(state: String, sessionToken: String, scopes: [String] = ["user"]) -> String {
-        GitHub(clientID: GitHubConfig.appid, clientSecret: GitHubConfig.secret)
-            .loginURL(state: state, sessionToken: sessionToken, scopes: scopes)
-    }
-
-    public static func processAuthResponse(
-        code: String,
-        state: String,
-        sessionCSRF: String,
-        sessionToken: String
-    ) async throws -> OAuthUserProfile {
-        guard state == sessionCSRF else { throw OAuth2Error(code: .unsupportedResponseType) }
-        let provider = GitHub(clientID: GitHubConfig.appid, clientSecret: GitHubConfig.secret)
-        let token = try await provider.exchange(code: code, state: state, sessionToken: sessionToken)
-        let userdata = await provider.getUserData(token.accessToken)
-        return OAuthUserProfile(
-            userid: userdata["userid"] as? String ?? "",
-            firstName: userdata["first_name"] as? String,
-            lastName: userdata["last_name"] as? String,
-            picture: userdata["picture"] as? String,
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            loginType: "github"
-        )
-    }
+/// Splits "First Middle Last" into ("First", "Last"); a single word is a first name.
+func splitName(_ name: String?) -> (String?, String?) {
+    guard let name else { return (nil, nil) }
+    let parts = name.split(separator: " ").map(String.init)
+    guard let first = parts.first else { return (nil, nil) }
+    return (first, parts.count > 1 ? parts.last : nil)
 }

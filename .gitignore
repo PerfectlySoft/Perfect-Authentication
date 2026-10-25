@@ -4,3 +4,4 @@
 /*.xcodeproj
 /config/ApplicationConfiguration.json
 Package.pins
+Package.resolved
