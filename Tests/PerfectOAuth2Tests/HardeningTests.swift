@@ -108,6 +108,16 @@ struct PendingBindingTests {
         }
     }
 
+    @Test func floodKeepsTheNewestHalf() {
+        let states = CompletedStates()
+        let now = Date()
+        let total = CompletedStates.capacity + 10
+        for index in 0..<total { _ = states.insert("s\(index)", now: now, maxAge: 600) }
+        // The most recent states are still refused; the oldest were evicted (best-effort, documented).
+        for index in (total - 1000)..<total { #expect(!states.insert("s\(index)", now: now, maxAge: 600)) }
+        #expect(states.insert("s0", now: now, maxAge: 600))
+    }
+
     @Test func completedStatesAgeOut() {
         let states = CompletedStates()
         let start = Date()

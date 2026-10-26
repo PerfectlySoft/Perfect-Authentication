@@ -369,24 +369,27 @@ public final class OAuth2: Sendable, CustomReflectable {
 /// victim's server-side pending authorization; deleting it from the session on completion is the
 /// real single-use guarantee.
 final class CompletedStates: @unchecked Sendable {
-    // Guarded by `lock`.
+    // Guarded by `lock`. `sequence` orders entries by insertion, so eviction keeps the newest ones
+    // even when many share a timestamp.
     private let lock = NSLock()
-    private var entries: [String: Date] = [:]
-    private static let capacity = 100_000
+    private var entries: [String: (seen: Date, sequence: UInt64)] = [:]
+    private var sequence: UInt64 = 0
+    static let capacity = 100_000
 
     /// Records `state`; returns false if it was already recorded and hasn't aged out.
     func insert(_ state: String, now: Date, maxAge: TimeInterval) -> Bool {
         lock.withLock {
-            if let seen = entries[state], now.timeIntervalSince(seen) <= maxAge { return false }
+            if let entry = entries[state], now.timeIntervalSince(entry.seen) <= maxAge { return false }
             if entries.count >= Self.capacity {
-                entries = entries.filter { now.timeIntervalSince($0.value) <= maxAge }
-                // Still full of live entries: drop the oldest half rather than grow without bound.
+                entries = entries.filter { now.timeIntervalSince($0.value.seen) <= maxAge }
+                // Still full of live entries: drop the older half rather than grow without bound.
                 if entries.count >= Self.capacity {
-                    let keep = entries.sorted { $0.value > $1.value }.prefix(Self.capacity / 2)
-                    entries = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+                    let cutoff = sequence - UInt64(Self.capacity / 2)
+                    entries = entries.filter { $0.value.sequence > cutoff }
                 }
             }
-            entries[state] = now
+            sequence += 1
+            entries[state] = (now, sequence)
             return true
         }
     }
