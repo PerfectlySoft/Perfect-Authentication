@@ -86,37 +86,44 @@ public struct URLSessionTransport: OAuth2Transport {
         // would get round the size cap as a memory bound. Ask for identity, and refuse anything else.
         urlRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = timeout
-        configuration.timeoutIntervalForResource = timeout
-        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.urlCache = nil
-        configuration.httpCookieStorage = nil
-        configuration.httpShouldSetCookies = false
-        configuration.urlCredentialStorage = nil
-
         let delegate = CappedDataDelegate(limit: maximumResponseBytes)
-        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-        let task = session.dataTask(with: urlRequest)
-        delegate.task = task
-
-        let deadline = Task { [timeout] in
-            // Clamped: UInt64(.infinity) or a huge value would trap.
-            let seconds = timeout.isNaN ? 0 : min(max(timeout, 0), 31_536_000)
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            delegate.fail(.timedOut)
-        }
+        // Neither the deadline nor the session setup runs on Swift's cooperative pool. On Linux,
+        // corelibs' URLSession creation, resume() and cancel() can block for a long time while it
+        // drains earlier cancelled transfers; on the cooperative pool that starved the deadline
+        // itself (a 5 s timeout fired after 75 s on Swift 6.2). A Dispatch timer and a Dispatch
+        // thread for setup keep the caller's deadline honest.
+        let seconds = timeout.isNaN ? 0 : min(max(timeout, 0), 31_536_000)  // clamped: no trap on .infinity
+        let deadline = DispatchWorkItem { delegate.fail(.timedOut) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: deadline)
         defer {
             deadline.cancel()
-            // Off the cooperative pool for the same reason as `cancelOffThread`.
-            DispatchQueue.global().async { session.invalidateAndCancel() }
+            delegate.invalidate()
         }
 
         try Task.checkCancellation()
+        let timeout = self.timeout
+        let finalRequest = urlRequest
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<OAuth2HTTPResponse, any Error>) in
-                // Not resumed if already cancelled or timed out: no request goes out.
-                if delegate.start(continuation) { task.resume() }
+                // Not started if already cancelled or timed out: no request goes out.
+                guard delegate.start(continuation) else { return }
+                DispatchQueue.global().async {
+                    let configuration = URLSessionConfiguration.ephemeral
+                    configuration.timeoutIntervalForRequest = timeout
+                    configuration.timeoutIntervalForResource = timeout
+                    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+                    configuration.urlCache = nil
+                    configuration.httpCookieStorage = nil
+                    configuration.httpShouldSetCookies = false
+                    configuration.urlCredentialStorage = nil
+                    let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+                    let task = session.dataTask(with: finalRequest)
+                    if delegate.attach(session: session, task: task) {
+                        task.resume()
+                    } else {
+                        session.invalidateAndCancel()  // finished (timed out or cancelled) during setup
+                    }
+                }
             }
         } onCancel: {
             delegate.fail(.network("cancelled"))
@@ -139,12 +146,31 @@ private final class CappedDataDelegate: NSObject, URLSessionDataDelegate, @unche
     private var status = 0
     private var data = Data()
     private var _task: URLSessionTask?
+    private var session: URLSession?
+    private var invalidated = false
 
     init(limit: Int) { self.limit = limit }
 
-    var task: URLSessionTask? {
-        get { lock.withLock { _task } }
-        set { lock.withLock { _task = newValue } }
+    /// Records the session and task; returns false if the request already finished or the caller
+    /// has returned, in which case the task must not be resumed.
+    func attach(session: URLSession, task: URLSessionTask) -> Bool {
+        lock.withLock {
+            guard !finished, !invalidated else { return false }
+            self.session = session
+            _task = task
+            return true
+        }
+    }
+
+    /// Called when the caller returns: invalidates the session off the calling thread (or makes a
+    /// later `attach` refuse, if setup hasn't finished).
+    func invalidate() {
+        let session: URLSession? = lock.withLock {
+            invalidated = true
+            defer { self.session = nil }
+            return self.session
+        }
+        if let session { DispatchQueue.global().async { session.invalidateAndCancel() } }
     }
 
     /// Stores the continuation; returns false (after resuming it with the failure) if the request
