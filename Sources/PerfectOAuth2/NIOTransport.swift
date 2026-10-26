@@ -23,6 +23,8 @@ import NIOTLS
 ///   refused before the body (`OAuth2Error.responseTooLarge`).
 /// - `Accept-Encoding: identity` is sent and any other `Content-Encoding` is refused.
 /// - Redirects are never followed; a 3xx comes back as is.
+/// - Once a request is done (or capped, or timed out) it stops reading and closes without waiting
+///   for the server's TLS close_notify (`tlsConfiguration.shutdownTimeout` is overridden).
 /// - **No proxy support:** unlike URLSession it ignores system and environment proxy settings. If
 ///   you need a proxy, use `URLSessionTransport` or your own `OAuth2Transport`.
 public struct NIOTransport: OAuth2Transport {
@@ -88,9 +90,15 @@ public struct NIOTransport: OAuth2Transport {
         )
         let body = request.body
 
+        // When we close (done, capped, timed out), don't wait for the peer's close_notify: NIOSSL's
+        // clean shutdown keeps reading, and discarding, whatever the peer sends for up to
+        // `shutdownTimeout` (5 s by default). Against an endless body that was 5 s of full-speed
+        // reading per capped call.
+        var tls = tlsConfiguration
+        tls.shutdownTimeout = .milliseconds(1)
         let sslContext: NIOSSLContext?
         do {
-            sslContext = useTLS ? try NIOSSLContext(configuration: tlsConfiguration) : nil
+            sslContext = useTLS ? try NIOSSLContext(configuration: tls) : nil
         } catch {
             throw OAuth2Error.invalidConfiguration("TLS configuration: \(type(of: error))")
         }
@@ -113,7 +121,10 @@ public struct NIOTransport: OAuth2Transport {
                 connected.fail(error)
                 ready.fail(error)
                 response.fail(error)
-                state.value.channel?.close(promise: nil)
+                if let channel = state.value.channel {
+                    try? channel.syncOptions?.setOption(.autoRead, value: false)
+                    channel.close(promise: nil)
+                }
             }
         }
         let deadline = loop.scheduleTask(in: .nanoseconds(Int64(seconds * 1_000_000_000))) { abort(.timedOut) }
@@ -207,6 +218,7 @@ public struct NIOTransport: OAuth2Transport {
             }
         case is NIOSSLError, is BoringSSLError, is NIOSSLExtraError: return .network("TLS: \(type(of: error))")
         case is ChannelError, is NIOConnectionError, is IOError: return .network("connection failed")
+        case is HTTPParserError: return .invalidResponse("malformed HTTP response")
         case is CancellationError: return .timedOut
         default: return .network(String(describing: type(of: error)))
         }
@@ -320,6 +332,9 @@ private final class CappedResponseCollector: ChannelInboundHandler {
         done = true
         body = []
         promise.completeWith(result)
+        // Stop reading before closing, so nothing more is pulled off the socket while the close
+        // (and any TLS shutdown) completes.
+        try? context.channel.syncOptions?.setOption(.autoRead, value: false)
         context.close(promise: nil)
     }
 }

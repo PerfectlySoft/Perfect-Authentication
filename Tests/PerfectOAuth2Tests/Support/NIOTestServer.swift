@@ -29,6 +29,10 @@ final class NIOTestServer: @unchecked Sendable {
 
     private let channel: any Channel
     private let stats: Stats
+    /// Its own thread: sharing the client's event loops let an endless pump starve the client's
+    /// reads on an emulated (amd64-on-arm64) machine. A real provider is remote, so this is closer
+    /// to production too.
+    private let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
     var port: Int { channel.localAddress?.port ?? 0 }
     var baseURL: String { "https://auth.test:\(port)" }
@@ -49,7 +53,7 @@ final class NIOTestServer: @unchecked Sendable {
             return try NIOSSLContext(configuration: configuration)
         }
         let stats = Stats()
-        channel = try ServerBootstrap(group: MultiThreadedEventLoopGroup.singleton)
+        channel = try ServerBootstrap(group: group)
             .serverChannelOption(.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { child in
                 child.eventLoop.makeCompletedFuture {
@@ -65,6 +69,7 @@ final class NIOTestServer: @unchecked Sendable {
 
     func stop() {
         try? channel.close().wait()
+        try? group.syncShutdownGracefully()
     }
 
     static func pem(for certificate: Certificate) -> (String, String) {
