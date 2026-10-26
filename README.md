@@ -345,8 +345,7 @@ struct Gitea: OAuth2Provider {
 Override `authorizationParameters` for extra login-link parameters (their names are then reserved),
 `makeAuthorizationRequest(scopes:state:additionalParameters:)` to change how every login link is
 built (it's dispatched dynamically, also through `any OAuth2Provider`), and
-`validate(_:pending:)` for token checks that must pass before an exchange returns. (The
-pre-release `validate(_:)` hook is deprecated but still called, before `validate(_:pending:)`.)
+`validate(_:pending:)` for token checks that must pass before an exchange returns.
 
 ## Migrating to 2.0
 
@@ -368,7 +367,6 @@ pre-release `validate(_:)` hook is deprecated but still called, before `validate
 | `OAuth2(clientID:clientSecret:authorizationURL:tokenURL:)` | `OAuth2(configuration:authorizationURL:tokenURL:defaultScopes:usesPKCEByDefault:)` with `URL`s |
 | `getLoginLink(redirectURL:state:scopes:) -> String` | `authorizationRequest(scopes:state:additionalParameters:) -> AuthorizationRequest` |
 | subclassing `OAuth2` (`open class`) | conform to `OAuth2Provider` and wrap an `OAuth2` (now `final`) |
-| pre-release `OAuth2Provider.validate(_ token:)` | `validate(_:pending:)`; the old method is deprecated but still called by `exchange`, before the new one |
 | `OAuth2Token` class, `webToken: [String: Any]?` | `OAuth2Token` struct; `idToken: String?` (raw, see the trust model) and `expiresIn` |
 | `OAuthUserProfile(userid:..., accessToken:, refreshToken:, loginType:)` | `try OAuthUserProfile(userid:..., loginType:, token:)`; `accessToken` and `refreshToken` are still readable |
 | `OAuth2Error` struct with `code: OAuth2ErrorCode` | `OAuth2Error` enum; the provider's code is in `.providerError(response)` / `.authorizationDenied(response)` |

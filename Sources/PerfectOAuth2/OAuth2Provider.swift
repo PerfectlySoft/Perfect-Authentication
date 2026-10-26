@@ -5,22 +5,7 @@ import Foundation
 /// Conform your own types to add providers this package doesn't ship. Implement `oauth2`,
 /// `loginType` and `fetchProfile(token:)`; override `authorizationParameters` and `validate(_:)` if
 /// you need extra login-link parameters or token checks.
-/// The pre-release `validate(_ token:)` hook, kept so conformers written against it still have it
-/// run. **Deprecated:** implement `OAuth2Provider.validate(_:pending:)` instead.
-///
-/// It is a separate, underscored protocol rather than a `@available(*, deprecated)` requirement: Swift
-/// doesn't warn the types that implement a deprecated requirement, only callers, and the one caller is
-/// `exchange` itself.
-public protocol _OAuth2LegacyTokenValidation {
-    /// Deprecated: implement `validate(_:pending:)`. Still called by `exchange`, before it.
-    func validate(_ token: OAuth2Token) throws
-}
-
-extension _OAuth2LegacyTokenValidation {
-    public func validate(_ token: OAuth2Token) throws {}
-}
-
-public protocol OAuth2Provider: Sendable, _OAuth2LegacyTokenValidation {
+public protocol OAuth2Provider: Sendable {
     var oauth2: OAuth2 { get }
     /// Identifies the provider in `OAuthUserProfile.loginType`.
     var loginType: String { get }
@@ -84,11 +69,9 @@ extension OAuth2Provider {
         try makeAuthorizationRequest(scopes: scopes, state: state, additionalParameters: additionalParameters)
     }
 
-    /// Checks state and the pending authorization, exchanges the code, and runs the deprecated
-    /// `validate(_:)` and then `validate(_:pending:)`.
+    /// Checks state and the pending authorization, exchanges the code, and runs `validate(_:pending:)`.
     public func exchange(callback: AuthorizationCallback, pending: PendingAuthorization) async throws -> OAuth2Token {
         let token = try await oauth2.exchange(callback: callback, pending: pending)
-        try validate(token)
         try validate(token, pending: pending)
         return token
     }
