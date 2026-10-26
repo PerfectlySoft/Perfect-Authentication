@@ -117,7 +117,7 @@ struct FlowTests {
                 try await client.exchange(callback: AuthorizationCallback(code: "c", state: state), pending: request.pending)
             }
         }
-        let emptyPending = PendingAuthorization(state: "", codeVerifier: nil, redirectURL: URL(string: "https://app.test/cb")!)
+        let emptyPending = PendingAuthorization(state: "", codeVerifier: request.pending.codeVerifier, redirectURL: request.pending.redirectURL, tokenURL: client.tokenURL, clientID: client.clientID)
         await #expect(throws: OAuth2Error.self) {
             try await client.exchange(callback: AuthorizationCallback(code: "c", state: ""), pending: emptyPending)
         }
@@ -134,7 +134,7 @@ struct FlowTests {
         await #expect(throws: OAuth2Error.missingAuthorizationCode) {
             try await client.exchange(callback: AuthorizationCallback(code: "", state: validState), pending: request.pending)
         }
-        let noVerifier = PendingAuthorization(state: validState, codeVerifier: nil, redirectURL: request.pending.redirectURL)
+        let noVerifier = PendingAuthorization(state: validState, codeVerifier: nil, redirectURL: request.pending.redirectURL, tokenURL: client.tokenURL, clientID: client.clientID)
         await #expect(throws: OAuth2Error.self) {
             try await client.exchange(callback: AuthorizationCallback(code: "c", state: validState), pending: noVerifier)
         }
@@ -152,7 +152,7 @@ struct ErrorMappingTests {
     private func exchange(status: Int, body: String) async throws -> OAuth2Token {
         let transport = StubTransport().on(tokenURL, status: status, body)
         let client = generic(transport, pkce: false)
-        let pending = PendingAuthorization(state: validState, codeVerifier: nil, redirectURL: URL(string: "https://app.test/auth/callback")!)
+        let pending = PendingAuthorization(state: validState, codeVerifier: nil, redirectURL: URL(string: "https://app.test/auth/callback")!, tokenURL: client.tokenURL, clientID: client.clientID)
         return try await client.exchange(callback: AuthorizationCallback(code: "the-code-123", state: validState), pending: pending)
     }
 
@@ -288,7 +288,7 @@ struct RedactionTests {
         let configuration = OAuth2ClientConfiguration(clientID: "id", clientSecret: "TOP-SECRET", redirectURL: URL(string: "https://app.test/cb")!)
         let token = OAuth2Token(accessToken: "ACCESS-TOK", refreshToken: "REFRESH-TOK", idToken: "ID-TOK")
         let profile = try OAuthUserProfile(userid: "42", loginType: "x", token: token)
-        let pending = PendingAuthorization(state: "STATE-VALUE-0123456789-0123456789", codeVerifier: "VERIFIER-VALUE", redirectURL: URL(string: "https://app.test/cb")!)
+        let pending = PendingAuthorization(state: "STATE-VALUE-0123456789-0123456789", codeVerifier: "VERIFIER-VALUE", redirectURL: URL(string: "https://app.test/cb")!, nonce: "NONCE-VALUE", tokenURL: URL(string: "https://a.test/t")!, clientID: "id")
         let google = Google(configuration: configuration)
         let request = OAuth2HTTPRequest(method: .post, url: URL(string: "https://a.test/t?x=1")!, headers: ["Authorization": "Bearer ACCESS-TOK"], body: Data("client_secret=TOP-SECRET".utf8))
         let all = [configuration, token, profile, pending, google, google.oauth2, request] as [Any]

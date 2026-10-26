@@ -19,6 +19,8 @@ final class LocalHTTPServer: @unchecked Sendable {
         case drip(declared: Int, interval: TimeInterval)
         /// Accepts and never answers.
         case silent
+        /// Writes `head` verbatim, then `chunk` `count` times (nil: until the client goes away).
+        case raw(head: String, chunk: Data, count: Int?)
     }
 
     struct Received: Sendable {
@@ -141,6 +143,13 @@ final class LocalHTTPServer: @unchecked Sendable {
             for _ in 0..<declared {
                 Thread.sleep(forTimeInterval: interval)
                 if !write(fd, Data(" ".utf8)) { return }
+            }
+        case .raw(let head, let chunk, let count):
+            guard write(fd, Data(head.utf8)) else { return }
+            var sent = 0
+            while count.map({ sent < $0 }) ?? true {
+                if !write(fd, chunk) { return }
+                sent += 1
             }
         case .silent:
             var byte: UInt8 = 0

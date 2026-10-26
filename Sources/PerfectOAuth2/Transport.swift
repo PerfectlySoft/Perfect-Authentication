@@ -58,10 +58,13 @@ public protocol OAuth2Transport: Sendable {
 /// - No cookies, cache or credential storage.
 /// - Redirects are not followed: the 3xx comes back as `OAuth2Error.httpStatus`.
 /// - `timeout` is a deadline for the whole request, not just the gap between bytes.
+/// - `Accept-Encoding: identity` is sent and any other `Content-Encoding` is refused before the body
+///   is read (Darwin would otherwise decompress before the size check).
 /// - A `Content-Length` over `maximumResponseBytes` is refused before the body is read; otherwise the
-///   task is cancelled as soon as the received body passes the limit. On Darwin that stops the
-///   download. On Linux, corelibs Foundation may keep reading after cancellation until the deadline,
-///   discarding what it reads (see the README's "Response limits on Linux").
+///   call returns as soon as the received body passes the limit and the task is cancelled. On Darwin
+///   that stops the download. On Linux, corelibs Foundation keeps reading and discarding in the
+///   background after cancellation, badly so on Swift 6.2 (see the README's "Response limits on
+///   Linux"). Only a custom `OAuth2Transport` gives hard memory and traffic bounds.
 public struct URLSessionTransport: OAuth2Transport {
     public let timeout: TimeInterval
     public let maximumResponseBytes: Int
@@ -79,6 +82,9 @@ public struct URLSessionTransport: OAuth2Transport {
         for (name, value) in request.headers {
             urlRequest.setValue(value, forHTTPHeaderField: name)
         }
+        // Darwin decompresses gzip/deflate/br before the delegate sees the bytes, so a compressed body
+        // would get round the size cap as a memory bound. Ask for identity, and refuse anything else.
+        urlRequest.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
@@ -95,7 +101,9 @@ public struct URLSessionTransport: OAuth2Transport {
         delegate.task = task
 
         let deadline = Task { [timeout] in
-            try await Task.sleep(nanoseconds: UInt64(max(timeout, 0) * 1_000_000_000))
+            // Clamped: UInt64(.infinity) or a huge value would trap.
+            let seconds = timeout.isNaN ? 0 : min(max(timeout, 0), 31_536_000)
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             delegate.fail(.timedOut)
         }
         defer {
@@ -104,10 +112,11 @@ public struct URLSessionTransport: OAuth2Transport {
             DispatchQueue.global().async { session.invalidateAndCancel() }
         }
 
+        try Task.checkCancellation()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<OAuth2HTTPResponse, any Error>) in
-                delegate.start(continuation)
-                task.resume()
+                // Not resumed if already cancelled or timed out: no request goes out.
+                if delegate.start(continuation) { task.resume() }
             }
         } onCancel: {
             delegate.fail(.network("cancelled"))
@@ -138,7 +147,9 @@ private final class CappedDataDelegate: NSObject, URLSessionDataDelegate, @unche
         set { lock.withLock { _task = newValue } }
     }
 
-    func start(_ continuation: CheckedContinuation<OAuth2HTTPResponse, any Error>) {
+    /// Stores the continuation; returns false (after resuming it with the failure) if the request
+    /// already failed (cancelled or timed out) and shouldn't start.
+    func start(_ continuation: CheckedContinuation<OAuth2HTTPResponse, any Error>) -> Bool {
         let failure: OAuth2Error? = lock.withLock {
             if let pendingFailure, !finished {
                 finished = true
@@ -147,7 +158,11 @@ private final class CappedDataDelegate: NSObject, URLSessionDataDelegate, @unche
             self.continuation = continuation
             return nil
         }
-        if let failure { continuation.resume(throwing: failure) }
+        if let failure {
+            continuation.resume(throwing: failure)
+            return false
+        }
+        return true
     }
 
     /// Ends the request with `error` (timeout, cancellation, size limit) unless it already finished.
@@ -175,6 +190,12 @@ private final class CappedDataDelegate: NSObject, URLSessionDataDelegate, @unche
     ) {
         if response.expectedContentLength > Int64(limit) {
             fail(.responseTooLarge(limit: limit))
+            completionHandler(.cancel)
+            return
+        }
+        if let encoding = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Encoding")?
+            .trimmingCharacters(in: .whitespaces).lowercased(), !encoding.isEmpty, encoding != "identity" {
+            fail(.invalidResponse("compressed response refused (Content-Encoding: \(encoding.prefix(32)))"))
             completionHandler(.cancel)
             return
         }

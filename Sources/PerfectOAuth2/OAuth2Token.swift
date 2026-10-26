@@ -5,7 +5,8 @@ import Foundation
 /// `description`, `debugDescription`, `dump` and `Mirror` hide the access, refresh and id tokens.
 public struct OAuth2Token: Sendable, Equatable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public let accessToken: String
-    /// `token_type`, `Bearer` when the provider omits it.
+    /// `token_type` as sent (case-insensitively `bearer`; anything else is refused), `Bearer` when
+    /// the provider omits it.
     public let tokenType: String
     public var refreshToken: String? { refreshTokenStorage }
     private var refreshTokenStorage: String?
@@ -57,7 +58,12 @@ public struct OAuth2Token: Sendable, Equatable, CustomStringConvertible, CustomD
         let scope = json["scope"]?.stringValue.map {
             $0.split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
         }
+        // Only Bearer tokens are supported (RFC 6750): a MAC or DPoP token sent as Bearer would fail
+        // or be misused. A missing or empty token_type is treated as Bearer.
         let tokenType = json["token_type"]?.stringValue
+        if let tokenType, !tokenType.isEmpty, tokenType.lowercased() != "bearer" {
+            throw OAuth2Error.invalidResponse("unsupported token_type")
+        }
         self.init(
             accessToken: accessToken,
             tokenType: (tokenType?.isEmpty == false ? tokenType : nil) ?? "Bearer",

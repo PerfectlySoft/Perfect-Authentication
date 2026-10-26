@@ -21,7 +21,14 @@ public typealias Linkedin = LinkedIn
 public typealias SalesForce = Salesforce
 
 @available(*, unavailable, message: "use PendingAuthorization and completeAuthorization(callback:pending:)")
-public struct AuthorizationCode {}
+public struct AuthorizationCode {
+    @available(*, unavailable, message: "use PendingAuthorization and completeAuthorization(callback:pending:)")
+    public init(code: String, redirectURL: String) { fatalError("unavailable") }
+}
+@available(*, unavailable, message: "errors are now OAuth2Error cases (.invalidConfiguration, .invalidCallback)")
+public struct InvalidInput {}
+@available(*, unavailable, message: "errors are now OAuth2Error cases (.providerError, .missingAuthorizationCode)")
+public struct InvalidAuthorizationCodeError {}
 @available(*, unavailable, message: "errors are now OAuth2Error cases")
 public struct InvalidAPIResponse {}
 @available(*, unavailable, message: "errors are now OAuth2Error cases (.network, .timedOut)")

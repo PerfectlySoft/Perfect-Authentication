@@ -15,8 +15,10 @@ struct IDTokenClaims: Sendable {
         _ idToken: String,
         issuers: Set<String>,
         clientID: String,
+        nonce: String? = nil,
         now: Date = Date(),
-        leeway: TimeInterval = 300
+        leeway: TimeInterval = 300,
+        maximumLifetime: TimeInterval = 86_400
     ) throws -> IDTokenClaims {
         let parts = idToken.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 3 else { throw OAuth2Error.invalidIDToken("not a compact JWS") }
@@ -41,13 +43,28 @@ struct IDTokenClaims: Sendable {
                 throw OAuth2Error.invalidIDToken("authorized party is not this client")
             }
         }
-        guard let exp = json["exp"]?.doubleValue else { throw OAuth2Error.invalidIDToken("no expiry") }
-        guard now.timeIntervalSince1970 < exp + leeway else { throw OAuth2Error.invalidIDToken("expired") }
-        if let iat = json["iat"]?.doubleValue, iat > now.timeIntervalSince1970 + leeway {
-            throw OAuth2Error.invalidIDToken("issued in the future")
+        // NumericDate (RFC 7519): JSON numbers only, not numeric strings.
+        func numeric(_ value: JSONValue?) -> Double? {
+            switch value {
+            case .integer(let number)?: return Double(number)
+            case .double(let number)? where number.isFinite: return number
+            default: return nil
+            }
         }
-        guard let sub = json["sub"]?.stringValue, !sub.isEmpty else {
+        guard let exp = numeric(json["exp"]) else { throw OAuth2Error.invalidIDToken("no numeric expiry") }
+        guard let iat = numeric(json["iat"]) else { throw OAuth2Error.invalidIDToken("no numeric issue time") }
+        let nowSeconds = now.timeIntervalSince1970
+        guard nowSeconds < exp + leeway else { throw OAuth2Error.invalidIDToken("expired") }
+        guard iat <= nowSeconds + leeway else { throw OAuth2Error.invalidIDToken("issued in the future") }
+        guard exp - iat <= maximumLifetime else { throw OAuth2Error.invalidIDToken("lifetime too long") }
+        guard let sub = json["sub"]?.stringValue,
+              !sub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw OAuth2Error.invalidIDToken("no subject")
+        }
+        if let nonce {
+            guard let claimed = json["nonce"]?.stringValue, constantTimeEquals(claimed, nonce) else {
+                throw OAuth2Error.invalidIDToken("nonce mismatch")
+            }
         }
         return IDTokenClaims(claims: json)
     }

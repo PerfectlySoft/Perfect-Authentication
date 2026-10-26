@@ -15,6 +15,8 @@ public struct OAuth2ClientConfiguration: Sendable, CustomStringConvertible, Cust
     public var scopes: [String]?
     /// Whether to use PKCE; nil uses the provider's default (see the README's provider table).
     public var usePKCE: Bool?
+    /// How long a `PendingAuthorization` stays usable, in seconds (default 10 minutes).
+    public var pendingAuthorizationMaxAge: TimeInterval
     public var http: OAuth2HTTPOptions
 
     public init(
@@ -23,6 +25,7 @@ public struct OAuth2ClientConfiguration: Sendable, CustomStringConvertible, Cust
         redirectURL: URL,
         scopes: [String]? = nil,
         usePKCE: Bool? = nil,
+        pendingAuthorizationMaxAge: TimeInterval = 600,
         http: OAuth2HTTPOptions = OAuth2HTTPOptions()
     ) {
         self.clientID = clientID
@@ -30,6 +33,7 @@ public struct OAuth2ClientConfiguration: Sendable, CustomStringConvertible, Cust
         self.redirectURL = redirectURL
         self.scopes = scopes
         self.usePKCE = usePKCE
+        self.pendingAuthorizationMaxAge = pendingAuthorizationMaxAge
         self.http = http
     }
 
@@ -44,6 +48,7 @@ public struct OAuth2ClientConfiguration: Sendable, CustomStringConvertible, Cust
             "redirectURL": redirectURL,
             "scopes": scopes as Any,
             "usePKCE": usePKCE as Any,
+            "pendingAuthorizationMaxAge": pendingAuthorizationMaxAge,
             "http": http,
         ], displayStyle: .struct)
     }
@@ -85,6 +90,7 @@ public final class OAuth2: Sendable {
     /// Whether authorization requests carry `code_challenge` and exchanges `code_verifier`.
     public let usesPKCE: Bool
     let transport: any OAuth2Transport
+    let completed = CompletedStates()
 
     public var clientID: String { configuration.clientID }
 
@@ -111,8 +117,11 @@ public final class OAuth2: Sendable {
 
     static let reservedParameters: Set<String> = [
         "response_type", "client_id", "redirect_uri", "state", "scope",
-        "code_challenge", "code_challenge_method",
+        "code_challenge", "code_challenge_method", "nonce",
     ]
+
+    /// The longest authorization code accepted from a callback.
+    public static let maximumCodeLength = 4096
 
     /// Builds the login link and the values to keep for the callback.
     ///
@@ -121,11 +130,14 @@ public final class OAuth2: Sendable {
     ///   - state: a state you generated; nil generates one with `AuthorizationState.generate()`. It
     ///     must be at least `AuthorizationState.minimumLength` characters.
     ///   - additionalParameters: extra query parameters (e.g. `prompt`). They can't replace the ones
-    ///     this method sets.
+    ///     this method sets, and a name can't appear twice.
+    ///   - nonce: an OpenID Connect nonce to send and keep in `pending` (checked against the id_token
+    ///     by providers that validate one).
     public func authorizationRequest(
         scopes: [String]? = nil,
         state: String? = nil,
-        additionalParameters: [URLQueryItem] = []
+        additionalParameters: [URLQueryItem] = [],
+        nonce: String? = nil
     ) throws -> AuthorizationRequest {
         let redirectURL = configuration.redirectURL
         try Self.validateRedirectURL(redirectURL)
@@ -134,6 +146,10 @@ public final class OAuth2: Sendable {
         try AuthorizationState.validateStored(state)
         for item in additionalParameters where Self.reservedParameters.contains(item.name) {
             throw OAuth2Error.invalidConfiguration("parameter \(item.name) is set by authorizationRequest")
+        }
+        let extraNames = additionalParameters.map(\.name)
+        guard Set(extraNames).count == extraNames.count else {
+            throw OAuth2Error.invalidConfiguration("a login-link parameter appears twice")
         }
 
         var items = [
@@ -153,11 +169,15 @@ public final class OAuth2: Sendable {
             items.append(URLQueryItem(name: "code_challenge", value: PKCE.challenge(for: codeVerifier)))
             items.append(URLQueryItem(name: "code_challenge_method", value: "S256"))
         }
+        if let nonce { items.append(URLQueryItem(name: "nonce", value: nonce)) }
         items += additionalParameters
         let url = try appendingQueryItems(items, to: authorizationURL)
         return AuthorizationRequest(
             url: url,
-            pending: PendingAuthorization(state: state, codeVerifier: verifier, redirectURL: redirectURL)
+            pending: PendingAuthorization(
+                state: state, codeVerifier: verifier, redirectURL: redirectURL, nonce: nonce,
+                tokenURL: tokenURL, clientID: clientID
+            )
         )
     }
 
@@ -166,12 +186,22 @@ public final class OAuth2: Sendable {
     /// - Throws: `OAuth2Error.authorizationDenied` if the provider sent an error,
     ///   `.stateMismatch`/`.invalidState` if the state check fails (before any network request),
     ///   `.missingAuthorizationCode`, or the errors of the token request.
+    ///
+    /// The pending authorization must come from this client (same token URL and client ID), be younger
+    /// than `pendingAuthorizationMaxAge`, carry the configured redirect URL and a well-formed verifier
+    /// when PKCE is on, and not have been used before with this instance. A used state is remembered
+    /// (in memory, for `pendingAuthorizationMaxAge`) as soon as the code is about to be sent, so a
+    /// second completion with the same pending authorization fails even if the first one failed later.
     public func exchange(callback: AuthorizationCallback, pending: PendingAuthorization) async throws -> OAuth2Token {
         try AuthorizationState.verify(returned: callback.state, expected: pending.state)
+        try check(pending)
         if let error = callback.error { throw OAuth2Error.authorizationDenied(error) }
         guard let code = callback.code, !code.isEmpty else { throw OAuth2Error.missingAuthorizationCode }
-        if usesPKCE, pending.codeVerifier == nil {
-            throw OAuth2Error.invalidConfiguration("PKCE is enabled but the pending authorization has no code verifier")
+        guard code.utf8.count <= Self.maximumCodeLength else {
+            throw OAuth2Error.invalidCallback("code longer than \(Self.maximumCodeLength) bytes")
+        }
+        guard completed.insert(pending.state, now: Date(), maxAge: configuration.pendingAuthorizationMaxAge) else {
+            throw OAuth2Error.invalidPendingAuthorization("already used")
         }
 
         var fields: [(String, String)] = [
@@ -184,6 +214,33 @@ public final class OAuth2: Sendable {
         if let verifier = pending.codeVerifier { fields.append(("code_verifier", verifier)) }
         let json = try await postForm(tokenURL, fields: fields, secrets: [code, pending.codeVerifier])
         return try OAuth2Token(json: json)
+    }
+
+    /// Checks that `pending` belongs to this client and is still usable.
+    func check(_ pending: PendingAuthorization, now: Date = Date()) throws {
+        guard pending.tokenURL == tokenURL, pending.clientID == clientID else {
+            throw OAuth2Error.invalidPendingAuthorization("created by a different provider or client")
+        }
+        guard pending.redirectURL == configuration.redirectURL else {
+            throw OAuth2Error.invalidPendingAuthorization("redirect URL differs from the configured one")
+        }
+        let age = now.timeIntervalSince(pending.createdAt)
+        guard age <= configuration.pendingAuthorizationMaxAge else {
+            throw OAuth2Error.invalidPendingAuthorization("expired")
+        }
+        guard age >= -60 else { throw OAuth2Error.invalidPendingAuthorization("created in the future") }
+        switch (usesPKCE, pending.codeVerifier) {
+        case (true, let verifier?):
+            guard PKCE.isValidVerifier(verifier) else {
+                throw OAuth2Error.invalidPendingAuthorization("malformed code verifier")
+            }
+        case (true, nil):
+            throw OAuth2Error.invalidPendingAuthorization("PKCE is enabled but there is no code verifier")
+        case (false, _?):
+            throw OAuth2Error.invalidPendingAuthorization("PKCE is disabled but there is a code verifier")
+        case (false, nil):
+            break
+        }
     }
 
     /// Obtains a new access token with a refresh token (RFC 6749 §6).
@@ -256,8 +313,9 @@ public final class OAuth2: Sendable {
         // Also checked here so a custom transport can't hand back an oversized body.
         guard response.body.count <= limit else { throw OAuth2Error.responseTooLarge(limit: limit) }
         let json = try? JSONValue(data: response.body)
-        let redact = (secrets + [configuration.clientSecret]).compactMap { $0 }
-        if let json, let error = OAuth2ErrorResponse.parse(json, redacting: redact) {
+        // The client secret first: it is redacted whatever its length.
+        let redact = ([configuration.clientSecret ?? ""] + secrets.map { $0 ?? "" })
+        if let json, let error = OAuth2ErrorResponse.parse(json, redacting: redact, alwaysRedact: 1) {
             throw OAuth2Error.providerError(error)
         }
         guard (200..<300).contains(response.status) else { throw OAuth2Error.httpStatus(response.status) }
@@ -271,6 +329,31 @@ public final class OAuth2: Sendable {
         guard url.host?.isEmpty == false else { throw OAuth2Error.invalidConfiguration("redirect URL has no host") }
         guard url.fragment == nil else {
             throw OAuth2Error.invalidConfiguration("redirect URL must not have a fragment (RFC 6749 §3.1.2)")
+        }
+    }
+}
+
+/// States already exchanged by one `OAuth2` instance, kept for the pending-authorization lifetime.
+final class CompletedStates: @unchecked Sendable {
+    // Guarded by `lock`.
+    private let lock = NSLock()
+    private var entries: [String: Date] = [:]
+    private static let capacity = 100_000
+
+    /// Records `state`; returns false if it was already recorded and hasn't aged out.
+    func insert(_ state: String, now: Date, maxAge: TimeInterval) -> Bool {
+        lock.withLock {
+            if let seen = entries[state], now.timeIntervalSince(seen) <= maxAge { return false }
+            if entries.count >= Self.capacity {
+                entries = entries.filter { now.timeIntervalSince($0.value) <= maxAge }
+                // Still full of live entries: drop the oldest half rather than grow without bound.
+                if entries.count >= Self.capacity {
+                    let keep = entries.sorted { $0.value > $1.value }.prefix(Self.capacity / 2)
+                    entries = Dictionary(uniqueKeysWithValues: keep.map { ($0.key, $0.value) })
+                }
+            }
+            entries[state] = now
+            return true
         }
     }
 }

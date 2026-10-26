@@ -75,7 +75,8 @@ public struct OAuthUserProfile: Sendable, Equatable, CustomStringConvertible, Cu
             "emailVerified": emailVerified,
             "loginType": loginType,
             "token": token,
-            "raw": raw,
+            // Keys only: a provider response could carry a token-like value.
+            "raw": raw.objectValue.map { "<JSON object: \($0.keys.sorted().joined(separator: ", "))>" } ?? "<JSON>",
         ], displayStyle: .struct)
     }
 }

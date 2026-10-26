@@ -41,6 +41,9 @@ private let googleUserInfo = "https://openidconnect.googleapis.com/v1/userinfo"
 
 @Suite("Google")
 struct GoogleTests {
+    private let token = #"{"access_token":"AT","id_token":"\#(googleIDToken())"}"#
+    private let info = #"{"sub":"1234567890","hd":"corp.test"}"#
+
     @Test func loginLink() throws {
         let google = Google(configuration: testConfiguration(transport: StubTransport()), restrictedDomain: "Corp.Test&prompt=none")
         let request = try google.authorizationRequest()
@@ -51,18 +54,44 @@ struct GoogleTests {
         #expect(query["hd"] == "corp.test&prompt=none")  // one encoded value, not an injected prompt
         #expect(query["prompt"] == nil)
         #expect(query["code_challenge_method"] == "S256")
+        #expect(query["nonce"] == nil)  // PKCE on: no nonce
         #expect(query["access_type"] == nil)
     }
 
-    @Test func offlineAccessAndOpenIDAlwaysRequested() throws {
-        let google = Google(configuration: testConfiguration(transport: StubTransport(), scopes: ["email"]))
+    @Test func openIDIsAddedOnEveryPath() throws {
+        let google = Google(configuration: testConfiguration(transport: StubTransport()))
+        let requests = [
+            try google.authorizationRequest(scopes: ["email"]),
+            try google.authorizationRequest(scopes: ["email"], offlineAccess: false),
+            try google.authorizationRequest(scopes: ["email"], state: nil, additionalParameters: []),
+            try (google as any OAuth2Provider).authorizationRequest(scopes: ["email"], state: nil, additionalParameters: []),
+            try (google as any OAuth2Provider).authorizationRequest(scopes: ["email"]),
+            try google.makeAuthorizationRequest(scopes: ["email"], state: nil, additionalParameters: []),
+        ]
+        for request in requests {
+            #expect(queryParameters(request.url)?["scope"] == "openid email")
+        }
+        let configured = Google(configuration: testConfiguration(transport: StubTransport(), scopes: ["email"]))
+        #expect(queryParameters(try configured.authorizationRequest().url)?["scope"] == "openid email")
+    }
+
+    @Test func offlineAccess() throws {
+        let google = Google(configuration: testConfiguration(transport: StubTransport()))
         let query = try #require(queryParameters(try google.authorizationRequest(offlineAccess: true).url))
         #expect(query["access_type"] == "offline")
         #expect(query["prompt"] == "consent")
-        #expect(query["scope"] == "openid email")
-        let custom = try #require(queryParameters(try google.authorizationRequest(scopes: ["profile"], offlineAccess: false).url))
-        #expect(custom["scope"] == "openid profile")
-        #expect(custom["access_type"] == nil)
+        #expect(query["scope"] == "openid profile")
+        // A duplicated prompt (offlineAccess plus an explicit one) is refused rather than sent twice.
+        #expect(throws: OAuth2Error.self) {
+            try google.authorizationRequest(offlineAccess: true, additionalParameters: [URLQueryItem(name: "prompt", value: "none")])
+        }
+    }
+
+    @Test func hdIsReservedAgainstAdditionalParameters() {
+        let google = Google(configuration: testConfiguration(transport: StubTransport()), restrictedDomain: "corp.test")
+        #expect(throws: OAuth2Error.invalidConfiguration("parameter hd is set by the provider")) {
+            try google.authorizationRequest(additionalParameters: [URLQueryItem(name: "hd", value: "evil.test")])
+        }
     }
 
     @Test func signInUsesBearerHeaderAndValidatedIDToken() async throws {
@@ -88,14 +117,14 @@ struct GoogleTests {
         // 1.x returned a profile with userid "" here.
         for body in [#"{}"#, #"{"sub":""}"#, #"{"id":"legacy-field"}"#] {
             await #expect(throws: OAuth2Error.missingUserID) {
-                _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, #"{"access_token":"AT"}"#), profile: (googleUserInfo, 200, body))
+                _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, token), profile: (googleUserInfo, 200, body))
             }
         }
         await #expect(throws: OAuth2Error.httpStatus(500)) {
-            _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, #"{"access_token":"AT"}"#), profile: (googleUserInfo, 500, "oops"))
+            _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, token), profile: (googleUserInfo, 500, "oops"))
         }
         await #expect(throws: OAuth2Error.providerError(OAuth2ErrorResponse(code: "invalid_token"))) {
-            _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, #"{"access_token":"AT"}"#), profile: (googleUserInfo, 401, #"{"error":"invalid_token"}"#))
+            _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, token), profile: (googleUserInfo, 401, #"{"error":"invalid_token"}"#))
         }
     }
 
@@ -105,9 +134,15 @@ struct GoogleTests {
             (googleIDToken(["aud": "someone-else"]), .invalidIDToken("audience is not this client")),
             (googleIDToken(["aud": ["client id&x", "other"]]), .invalidIDToken("authorized party is not this client")),
             (googleIDToken(["exp": now - 600]), .invalidIDToken("expired")),
-            (googleIDToken(removing: ["exp"]), .invalidIDToken("no expiry")),
+            (googleIDToken(removing: ["exp"]), .invalidIDToken("no numeric expiry")),
+            (googleIDToken(["exp": String(Int(now) + 600)]), .invalidIDToken("no numeric expiry")),
+            (googleIDToken(removing: ["iat"]), .invalidIDToken("no numeric issue time")),
+            (googleIDToken(["iat": String(Int(now))]), .invalidIDToken("no numeric issue time")),
             (googleIDToken(["iat": now + 3600]), .invalidIDToken("issued in the future")),
+            (googleIDToken(["exp": now + 3_153_600_000]), .invalidIDToken("lifetime too long")),
             (googleIDToken(["sub": ""]), .invalidIDToken("no subject")),
+            (googleIDToken(["sub": "  "]), .invalidIDToken("no subject")),
+            (googleIDToken(["sub": 123]), .invalidIDToken("no subject")),
             (googleIDToken(["hd": "other.test"]), .restrictedDomainMismatch),
             (googleIDToken(removing: ["hd"]), .restrictedDomainMismatch),
             ("not.a-jwt", .invalidIDToken("not a compact JWS")),
@@ -118,23 +153,23 @@ struct GoogleTests {
                 _ = try await signIn(
                     { Google(configuration: $0, restrictedDomain: "corp.test") },
                     token: (googleToken, #"{"access_token":"AT","id_token":"\#(idToken)"}"#),
-                    profile: (googleUserInfo, 200, #"{"sub":"1234567890"}"#)
+                    profile: (googleUserInfo, 200, info)
                 )
             }
         }
-        // Restricted domain without an id_token at all.
+        // Every exchange needs an id_token now that openid is always requested.
         await #expect(throws: OAuth2Error.invalidIDToken("no id_token; request the openid scope")) {
-            _ = try await signIn({ Google(configuration: $0, restrictedDomain: "corp.test") }, token: (googleToken, #"{"access_token":"AT"}"#), profile: nil)
+            _ = try await signIn({ Google(configuration: $0) }, token: (googleToken, #"{"access_token":"AT"}"#), profile: nil)
         }
         // Accepted: azp matches with multiple audiences, issuer without scheme, small clock skew.
         _ = try await signIn(
             { Google(configuration: $0, restrictedDomain: "CORP.test") },
             token: (googleToken, #"{"access_token":"AT","id_token":"\#(googleIDToken(["aud": ["client id&x", "other"], "azp": "client id&x", "iss": "accounts.google.com", "exp": now - 60]))"}"#),
-            profile: (googleUserInfo, 200, #"{"sub":"1234567890"}"#)
+            profile: (googleUserInfo, 200, info)
         )
     }
 
-    @Test func base64URLIDTokenPayloadDecodes() async throws {
+    @Test func base64URLIDTokenPayloadDecodes() throws {
         // A payload whose base64url form contains '-' and '_' (1.x used standard base64 and failed).
         let token = googleIDToken(["name": "??>>~~ÿ"])
         #expect(token.split(separator: ".")[1].contains { $0 == "-" || $0 == "_" })
@@ -142,11 +177,46 @@ struct GoogleTests {
         #expect(claims.claims["hd"]?.stringValue == "corp.test")
     }
 
-    @Test func subjectMismatchBetweenIDTokenAndUserInfo() async {
-        await #expect(throws: OAuth2Error.invalidResponse("userinfo subject differs from the id_token subject")) {
-            _ = try await signIn({ Google(configuration: $0) },
-                token: (googleToken, #"{"access_token":"AT","id_token":"\#(googleIDToken())"}"#),
-                profile: (googleUserInfo, 200, #"{"sub":"someone-else"}"#))
+    @Test func restrictedDomainIsCheckedThroughUserInfo() async throws {
+        // The reviewer's repro: an app-built token with a forged (unsigned) id_token claiming
+        // hd=corp.test, plus a real access token whose userinfo has no hd.
+        let transport = StubTransport().on(googleUserInfo, #"{"sub":"attacker-sub","email":"a@gmail.com","email_verified":true}"#)
+        let google = Google(configuration: testConfiguration(transport: transport), restrictedDomain: "corp.test")
+        let forged = OAuth2Token(accessToken: "attacker-access-token", idToken: googleIDToken(["sub": "attacker-sub", "hd": "corp.test"]))
+        await #expect(throws: OAuth2Error.restrictedDomainMismatch) { try await google.fetchProfile(token: forged) }
+        transport.on(googleUserInfo, #"{"sub":"x","hd":"other.test"}"#)
+        await #expect(throws: OAuth2Error.restrictedDomainMismatch) { try await google.fetchProfile(token: forged) }
+        transport.on(googleUserInfo, #"{"sub":"x","hd":"CORP.test"}"#)
+        #expect(try await google.fetchProfile(token: forged).userid == "x")
+    }
+
+    @Test func storedTokenWithExpiredIDTokenStillFetchesProfile() async throws {
+        let transport = StubTransport().on(googleUserInfo, #"{"sub":"123"}"#)
+        let google = Google(configuration: testConfiguration(transport: transport))
+        let stored = OAuth2Token(accessToken: "AT", idToken: googleIDToken(["exp": now - 7200, "iat": now - 10800]))
+        #expect(try await google.fetchProfile(token: stored).userid == "123")
+    }
+
+    @Test func nonceWhenPKCEIsOff() async throws {
+        let transport = StubTransport().on(googleUserInfo, info)
+        let google = Google(configuration: testConfiguration(transport: transport, usePKCE: false))
+        let request = try google.authorizationRequest()
+        let query = try #require(queryParameters(request.url))
+        let nonce = try #require(request.pending.nonce)
+        #expect(query["nonce"] == nonce)
+        #expect(query["code_challenge"] == nil)
+        let callback = AuthorizationCallback(code: "CODE", state: request.pending.state)
+        for (claims, ok) in [(["nonce": nonce], true), (["nonce": "other"], false), ([:], false)] as [([String: Any], Bool)] {
+            let fresh = Google(configuration: testConfiguration(transport: transport, usePKCE: false))
+            let pending = PendingAuthorization(state: request.pending.state, codeVerifier: nil, redirectURL: request.pending.redirectURL, nonce: nonce, tokenURL: fresh.oauth2.tokenURL, clientID: fresh.oauth2.clientID)
+            transport.on(googleToken, #"{"access_token":"AT","id_token":"\#(googleIDToken(claims))"}"#)
+            if ok {
+                _ = try await fresh.completeAuthorization(callback: callback, pending: pending)
+            } else {
+                await #expect(throws: OAuth2Error.invalidIDToken("nonce mismatch")) {
+                    try await fresh.completeAuthorization(callback: callback, pending: pending)
+                }
+            }
         }
     }
 }
