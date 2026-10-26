@@ -55,7 +55,7 @@ public struct OAuth2ClientConfiguration: Sendable, CustomStringConvertible, Cust
 }
 
 /// HTTP limits for token and profile requests.
-public struct OAuth2HTTPOptions: Sendable {
+public struct OAuth2HTTPOptions: Sendable, CustomReflectable {
     /// Deadline for each whole request, in seconds.
     public var timeout: TimeInterval
     /// Largest response body accepted. Token and profile responses are a few KB.
@@ -76,6 +76,15 @@ public struct OAuth2HTTPOptions: Sendable {
         self.transport = transport
         self.userAgent = userAgent
     }
+
+    public var customMirror: Mirror {
+        Mirror(self, children: [
+            "timeout": timeout,
+            "maximumResponseBytes": maximumResponseBytes,
+            "transport": transport.map { String(describing: type(of: $0)) } ?? "default (NIOTransport)",
+            "userAgent": userAgent,
+        ], displayStyle: .struct)
+    }
 }
 
 /// The authorization-code flow (RFC 6749 §4.1) with PKCE (RFC 7636) for one provider's endpoints.
@@ -83,7 +92,7 @@ public struct OAuth2HTTPOptions: Sendable {
 /// Use it directly for any standards-following provider, or wrap it in an `OAuth2Provider` that adds
 /// a profile fetch. It is `final` and immutable, so it is checked `Sendable`; customise providers by
 /// composition (`OAuth2Provider`), not subclassing.
-public final class OAuth2: Sendable {
+public final class OAuth2: Sendable, CustomReflectable {
     public let configuration: OAuth2ClientConfiguration
     public let authorizationURL: URL
     public let tokenURL: URL
@@ -94,6 +103,19 @@ public final class OAuth2: Sendable {
     let completed = CompletedStates()
 
     public var clientID: String { configuration.clientID }
+
+    /// The configuration (secret redacted), endpoints and the transport's type, but not the
+    /// transport's or the replay record's internals.
+    public var customMirror: Mirror {
+        Mirror(self, children: [
+            "configuration": configuration,
+            "authorizationURL": authorizationURL,
+            "tokenURL": tokenURL,
+            "defaultScopes": defaultScopes,
+            "usesPKCE": usesPKCE,
+            "transport": String(describing: type(of: transport)),
+        ], displayStyle: .class)
+    }
 
     /// - Parameters:
     ///   - defaultScopes: used when `configuration.scopes` is nil.

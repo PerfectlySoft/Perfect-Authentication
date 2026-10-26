@@ -27,7 +27,7 @@ import NIOTLS
 ///   for the server's TLS close_notify (`tlsConfiguration.shutdownTimeout` is overridden).
 /// - **No proxy support:** unlike URLSession it ignores system and environment proxy settings. If
 ///   you need a proxy, use `URLSessionTransport` or your own `OAuth2Transport`.
-public struct NIOTransport: OAuth2Transport {
+public struct NIOTransport: OAuth2Transport, CustomReflectable {
     public let timeout: TimeInterval
     public let maximumResponseBytes: Int
     private let group: any EventLoopGroup
@@ -62,6 +62,16 @@ public struct NIOTransport: OAuth2Transport {
         self.maximumResponseBytes = max(0, maximumResponseBytes)
         self.tlsConfiguration = tlsConfiguration
         self.addressOverride = addressOverride
+    }
+
+    /// Doesn't descend into the event-loop group: reflecting live NIO internals from another thread
+    /// is a data race (found by ThreadSanitizer through `dump(provider)`).
+    public var customMirror: Mirror {
+        Mirror(self, children: [
+            "timeout": timeout,
+            "maximumResponseBytes": maximumResponseBytes,
+            "group": String(describing: type(of: group)),
+        ], displayStyle: .struct)
     }
 
     public func send(_ request: OAuth2HTTPRequest) async throws -> OAuth2HTTPResponse {
