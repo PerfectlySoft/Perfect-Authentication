@@ -21,7 +21,8 @@ import NIOTLS
 /// - `timeout` bounds the whole request, connect to last byte (`OAuth2Error.timedOut`).
 /// - At most `maximumResponseBytes` of body are read, chunked or not; a larger `Content-Length` is
 ///   refused before the body (`OAuth2Error.responseTooLarge`).
-/// - `Accept-Encoding: identity` is sent and any other `Content-Encoding` is refused.
+/// - `Accept-Encoding: identity` is sent and any other `Content-Encoding` is refused, as is any
+///   `Transfer-Encoding` other than plain `chunked`.
 /// - Redirects are never followed; a 3xx comes back as is.
 /// - Once a request is done (or capped, or timed out) it stops reading and closes without waiting
 ///   for the server's TLS close_notify (`tlsConfiguration.shutdownTimeout` is overridden).
@@ -82,8 +83,14 @@ public struct NIOTransport: OAuth2Transport, CustomReflectable {
         let useTLS = url.scheme?.lowercased() == "https"
         let port = url.port ?? (useTLS ? 443 : 80)
         let isLiteral = (try? SocketAddress(ipAddress: host, port: 0)) != nil
-        let basePath = url.path.isEmpty ? "/" : url.path
-        let target = url.query.map { basePath + "?" + $0 } ?? basePath
+        // The request target, exactly as encoded in the URL. (`url.path` is percent-decoded and drops a
+        // trailing slash: `/api/` went out as `/api`, `/%3F/` as `/?`, and `/a%20b` as an invalid
+        // request line.)
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            throw OAuth2Error.invalidConfiguration("unparseable request URL")
+        }
+        let encodedPath = components.percentEncodedPath.isEmpty ? "/" : components.percentEncodedPath
+        let target = components.percentEncodedQuery.map { encodedPath + "?" + $0 } ?? encodedPath
         let hostField = (host.contains(":") ? "[\(host)]" : host) + (url.port.map { ":\($0)" } ?? "")
 
         var headers = HTTPHeaders()
@@ -192,12 +199,22 @@ public struct NIOTransport: OAuth2Transport, CustomReflectable {
                 if useTLS {
                     try await ready.futureResult.get()
                 }
-                // Write only if nothing aborted the request after the handshake.
+                // Write only if nothing aborted the request after the handshake. A write the HTTP encoder
+                // or header validator refuses is our request's fault, not the server's: report it as
+                // such rather than as a malformed response.
                 try await loop.submit {
                     if let aborted = state.value.aborted { throw aborted }
+                    let written = loop.makePromise(of: Void.self)
+                    written.futureResult.whenFailure { error in
+                        guard state.value.aborted == nil else { return }
+                        let rejected = OAuth2Error.invalidConfiguration("HTTP request rejected (\(type(of: error)))")
+                        state.value.aborted = rejected
+                        response.fail(rejected)
+                        channel.close(promise: nil)
+                    }
                     channel.write(HTTPClientRequestPart.head(head), promise: nil)
                     if let body { channel.write(HTTPClientRequestPart.body(.byteBuffer(ByteBuffer(bytes: body))), promise: nil) }
-                    channel.writeAndFlush(HTTPClientRequestPart.end(nil), promise: nil)
+                    channel.writeAndFlush(HTTPClientRequestPart.end(nil), promise: written)
                 }.get()
                 let result = try await response.futureResult.get()
                 channel.close(promise: nil)
@@ -208,7 +225,7 @@ public struct NIOTransport: OAuth2Transport, CustomReflectable {
                 throw Self.map(await Self.aborted(state, loop) ?? error)
             }
         } onCancel: {
-            abort(.network("cancelled"))
+            abort(.cancelled)
         }
     }
 
@@ -229,7 +246,7 @@ public struct NIOTransport: OAuth2Transport, CustomReflectable {
         case is NIOSSLError, is BoringSSLError, is NIOSSLExtraError: return .network("TLS: \(type(of: error))")
         case is ChannelError, is NIOConnectionError, is IOError: return .network("connection failed")
         case is HTTPParserError: return .invalidResponse("malformed HTTP response")
-        case is CancellationError: return .timedOut
+        case is CancellationError: return .cancelled
         default: return .network(String(describing: type(of: error)))
         }
     }
@@ -309,9 +326,16 @@ private final class CappedResponseCollector: ChannelInboundHandler {
                 finish(context, .failure(OAuth2Error.responseTooLarge(limit: limit)))
                 return
             }
-            if let encoding = head.headers.first(name: "Content-Encoding")?.trimmingCharacters(in: .whitespaces).lowercased(),
-               !encoding.isEmpty, encoding != "identity" {
+            // Every Content-Encoding header and list element, not only the first.
+            let encodings = head.headers[canonicalForm: "Content-Encoding"].map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            if let encoding = encodings.first(where: { !$0.isEmpty && $0 != "identity" }) {
                 finish(context, .failure(OAuth2Error.invalidResponse("compressed response refused (Content-Encoding: \(encoding.prefix(32)))")))
+                return
+            }
+            // Only plain chunked framing: `gzip, chunked` would hand the collector a compressed body.
+            let transferCodings = head.headers[canonicalForm: "Transfer-Encoding"].map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            if !transferCodings.isEmpty, transferCodings != ["chunked"] {
+                finish(context, .failure(OAuth2Error.invalidResponse("unsupported Transfer-Encoding (\(transferCodings.joined(separator: ", ").prefix(32)))")))
                 return
             }
             status = Int(head.status.code)

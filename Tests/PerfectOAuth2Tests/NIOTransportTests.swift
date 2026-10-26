@@ -153,7 +153,7 @@ extension TransportSuites {
             task.cancel()
             let result = await task.result
             #expect(Date().timeIntervalSince(start) < 2)
-            guard case .failure(OAuth2Error.network("cancelled")) = result else { Issue.record("\(result)"); return }
+            guard case .failure(OAuth2Error.cancelled) = result else { Issue.record("\(result)"); return }
         }
 
         @Test func connectionRefused() async throws {
@@ -284,6 +284,77 @@ extension TransportSuites {
             #expect(server.connectionCount == 50)
             #expect(server.openConnections == 0)
             #expect(server.requests.isEmpty)
+        }
+    }
+}
+
+extension TransportSuites {
+    @Suite("NIOTransport request targets and framing", .serialized)
+    struct NIOTransportTargetTests {
+        /// The request line the server saw for `path`.
+        private func requestLine(_ path: String) async throws -> (String?, Result<OAuth2HTTPResponse, any Error>) {
+            let server = try NIOTestServer(certificate: nil) { _ in .respond(status: 200, headers: [:], body: Data("{}".utf8)) }
+            defer { server.stop() }
+            let transport = NIOTransport(timeout: 5)
+            let result: Result<OAuth2HTTPResponse, any Error>
+            do {
+                result = .success(try await transport.send(OAuth2HTTPRequest(method: .get, url: URL(string: "http://127.0.0.1:\(server.port)\(path)")!)))
+            } catch {
+                result = .failure(error)
+            }
+            return (server.requests.first?.head.split(separator: "\r\n").first.map(String.init), result)
+        }
+
+        @Test func pathsAreSentAsEncoded() async throws {
+            // Reported by the re-review: `url.path` decoded these and dropped the trailing slash.
+            let cases: [(String, String)] = [
+                ("/api/", "GET /api/ HTTP/1.1"),
+                ("/%3F/?", "GET /%3F/? HTTP/1.1"),
+                ("/a%20b/c%2Fd?q=%20x&y=1", "GET /a%20b/c%2Fd?q=%20x&y=1 HTTP/1.1"),
+                ("/x%0D%0AX-Injected:%201", "GET /x%0D%0AX-Injected:%201 HTTP/1.1"),
+                ("/a/../b", "GET /a/../b HTTP/1.1"),
+                ("", "GET / HTTP/1.1"),
+                ("?x=1", "GET /?x=1 HTTP/1.1"),
+            ]
+            for (path, expected) in cases {
+                let (line, result) = try await requestLine(path)
+                #expect(line == expected, "\(path)")
+                if case .failure(let error) = result { Issue.record("\(path): \(error)") }
+            }
+            // A non-ASCII path is percent-encoded by URL(string:), and sent as such.
+            let (line, _) = try await requestLine("/ünï")
+            #expect(line == "GET /%C3%BCn%C3%AF HTTP/1.1")
+        }
+
+        @Test func requestTheEncoderRefusesIsReportedAsOurs() async throws {
+            let server = try NIOTestServer(certificate: nil) { _ in .respond(status: 200, headers: [:], body: Data("{}".utf8)) }
+            defer { server.stop() }
+            let request = OAuth2HTTPRequest(method: .get, url: URL(string: "http://127.0.0.1:\(server.port)/")!, headers: ["X-Bad": "a\r\nX-Injected: 1"])
+            let error = await #expect(throws: OAuth2Error.self) { try await NIOTransport(timeout: 5).send(request) }
+            guard case .invalidConfiguration(let why)? = error else { Issue.record("\(String(describing: error))"); return }
+            #expect(why.hasPrefix("HTTP request rejected"))
+            #expect(server.requests.isEmpty)
+        }
+
+        @Test func onlyPlainChunkedAndIdentityAreAccepted() async throws {
+            for head in [
+                "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip, chunked\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n\r\n",
+                "HTTP/1.1 200 OK\r\nContent-Encoding: identity\r\nContent-Encoding: gzip\r\nContent-Length: 2\r\n\r\n{}",
+                "HTTP/1.1 200 OK\r\nContent-Encoding: identity, br\r\nContent-Length: 2\r\n\r\n{}",
+            ] {
+                let server = try NIOTestServer(certificate: nil) { _ in .rawHead(head) }
+                defer { server.stop() }
+                let error = await #expect(throws: OAuth2Error.self) {
+                    try await NIOTransport(timeout: 3).send(OAuth2HTTPRequest(method: .get, url: URL(string: "http://127.0.0.1:\(server.port)/")!))
+                }
+                guard case .invalidResponse(let why)? = error else { Issue.record("\(head): \(String(describing: error))"); continue }
+                #expect(why.hasPrefix("unsupported Transfer-Encoding") || why.hasPrefix("compressed response refused"), "\(why)")
+            }
+            let chunked = try NIOTestServer(certificate: nil) { _ in .rawHead("HTTP/1.1 200 OK\r\nTransfer-Encoding: Chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n") }
+            defer { chunked.stop() }
+            let response = try await NIOTransport(timeout: 3).send(OAuth2HTTPRequest(method: .get, url: URL(string: "http://127.0.0.1:\(chunked.port)/")!))
+            #expect(String(decoding: response.body, as: UTF8.self) == "{}")
         }
     }
 }

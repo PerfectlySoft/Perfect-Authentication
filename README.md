@@ -104,13 +104,17 @@ Everything throws `OAuth2Error`:
 | `.stateMismatch`, `.invalidState` | CSRF check failed, or the stored state is unusable |
 | `.authorizationDenied(response)` | the provider redirected back with `error=` (e.g. `access_denied`) |
 | `.missingAuthorizationCode`, `.invalidCallback` | the callback had neither `code` nor `error`, or a `code` over 4 KB |
-| `.invalidPendingAuthorization` | the `PendingAuthorization` is from another provider or client, expired, tampered with, or already used |
+| `.invalidPendingAuthorization` | the `PendingAuthorization` was created by another provider or client, is expired, is inconsistent with the configuration (redirect URL, PKCE, verifier), or was already used by this instance |
 | `.providerError(response)` | an error body from a token or API endpoint; `response.code` is the provider's code (`invalid_grant`, `bad_verification_code`, `OAuthException`...), `response.standardCode` the RFC 6749 one if it is one |
 | `.httpStatus(Int)` | any other non-2xx, including redirects (never followed) |
 | `.invalidResponse`, `.missingUserID` | the response wasn't the JSON expected (including a non-Bearer `token_type` or a compressed body), or had no user id |
 | `.invalidIDToken`, `.restrictedDomainMismatch` | Google id_token and domain checks |
-| `.timedOut`, `.network`, `.responseTooLarge` | transport failures |
+| `.timedOut`, `.cancelled`, `.network`, `.responseTooLarge` | transport failures, or the calling task was cancelled |
 | `.insecureURL`, `.invalidConfiguration` | a non-HTTPS endpoint, or a bad redirect URL / parameter |
+
+`exchange` and `completeAuthorization` check the state first, then the pending authorization, and
+only then report an `error=` callback, so a provider error arriving with an expired pending
+authorization throws `.invalidPendingAuthorization` rather than `.authorizationDenied`.
 
 Error descriptions never include secrets: provider text is truncated, stripped of control
 characters, and has the client secret (always) and the code, verifier and tokens from the failed
@@ -133,8 +137,15 @@ request (from 8 characters) replaced with `<redacted>`, in raw and percent-encod
   (as the quick start does). `exchange` also refuses one that was created by another provider or
   client ID, is older than `pendingAuthorizationMaxAge` (default 10 minutes), carries a redirect URL
   other than the configured one or a malformed verifier, or has already been completed by the same
-  provider instance (remembered in memory for the max age). That last check can't span processes, so
-  deleting it from the session is what makes it single-use across a cluster.
+  provider instance (remembered in memory for the max age).
+  - These are consistency checks against honest mistakes (a pending from another provider, a stale
+    one), **not tamper detection**: the value isn't signed, so a hand-built pending with the right
+    fields passes, and so does one with its nonce removed. Its integrity rests on keeping it
+    server-side, where the client can't change it.
+  - The reuse check is best-effort: it is per process, and under a flood (100,000 live entries) it
+    keeps only the newest half, so an older state could be accepted again within the max age. A
+    replay would still need the victim's server-side pending authorization. Deleting it from the
+    session on completion is what makes it single-use, across a cluster too.
 - **Redirect URI.** One fixed, registered `redirectURL` per provider: absolute HTTPS (HTTP only to
   `localhost`, `127.0.0.1` and `::1`), no fragment. It is sent unchanged on the authorization request and the exchange. 1.x appended
   `?session=<session token>` to it, which leaked the session token to the provider and into logs;
@@ -150,8 +161,12 @@ request (from 8 characters) replaced with `<redacted>`, in raw and percent-encod
 - **Profiles come from the provider's API, not from tokens.** `fetchProfile(token:)` accepts any
   access token, including one your app stored or received from elsewhere, and trusts only the
   provider's userinfo response for it. It never reads the token's id_token. Google's
-  `restrictedDomain` is checked there too, against userinfo's `hd`, so a token from another Google
-  client or a forged id_token can't get round it.
+  `restrictedDomain` is checked there too, against userinfo's `hd`, so a forged id_token can't get
+  round it. But **`fetchProfile` doesn't prove the token was issued to your app**: the access token's
+  audience isn't checked, so a token another app obtained for the same user (token substitution)
+  would be accepted. Use it with tokens from your own `exchange`/`completeAuthorization`, or verify
+  the audience yourself first (for Google, `https://oauth2.googleapis.com/tokeninfo` returns the
+  token's `aud`).
 - **Email.** `email` is only trustworthy when `emailVerified` is true. GitHub's profile email is never
   marked verified.
 - **Tokens on the wire.** Access tokens are sent in the `Authorization: Bearer` header, never in a URL.
@@ -160,16 +175,16 @@ request (from 8 characters) replaced with `<redacted>`, in raw and percent-encod
 - **HTTP limits.** Each request has a whole-request deadline (`OAuth2HTTPOptions.timeout`, default
   30 s), a response cap (`maximumResponseBytes`, default 1 MiB, checked against `Content-Length` and
   while reading), no redirects, no cookies or cache, `Accept-Encoding: identity` with any other
-  `Content-Encoding` refused before the body is read, and HTTPS only (HTTP to loopback for testing).
-  With the default `NIOTransport` these are hard bounds on every platform: reading stops and the
-  connection closes the moment one is hit. Only `token_type` Bearer is accepted.
+  `Content-Encoding` (and any `Transfer-Encoding` other than plain `chunked`) refused when the
+  response head arrives, and HTTPS only (HTTP to loopback for testing). With the default
+  `NIOTransport` these are hard bounds on every platform: reading stops and the connection closes the
+  moment one is hit. Only `token_type` Bearer is accepted. Salesforce's identity URL must be HTTPS on
+  the login host or an allowed suffix (`identityHostSuffixes`) before the token is sent to it.
 - **TLS.** The default transport verifies the certificate chain against the system trust store and
   the host name (with SNI), and for a host name also requires a matching DNS subjectAltName, so a
   certificate that only names an IP address is refused (NIOSSL alone accepts an IP SAN equal to the
   dialed address). Nothing is written to the connection until the handshake and that check pass, so
-  a server whose certificate is refused never sees the request or the client secret in it. Salesforce's
-  identity URL must be HTTPS on the login host or an allowed suffix (`identityHostSuffixes`) before
-  the token is sent to it.
+  a server whose certificate is refused never sees the request or the client secret in it.
 - **No secrets in output.** `description`, `debugDescription`, `dump` and `Mirror` of
   `OAuth2ClientConfiguration`, `OAuth2Token`, `OAuthUserProfile`, `PendingAuthorization`,
   `AuthorizationRequest`, `AuthorizationCallback` and `OAuth2HTTPRequest` show `<redacted>` for
@@ -184,9 +199,10 @@ request (from 8 characters) replaced with `<redacted>`, in raw and percent-encod
   `NIOTransport(tlsConfiguration:)` to trust a private CA. **It ignores proxy settings**: URLSession
   honours the system and environment proxies, this client doesn't.
 - **`URLSessionTransport` (opt-in).** Foundation's URLSession, with the same deadline, cap, identity
-  encoding and no-redirect rules. Use it if you need a proxy. It is bounded on macOS, but **not on
-  Linux**: corelibs Foundation keeps reading and discarding a cancelled response in the background,
-  and on Swift 6.2 that is severe.
+  encoding and no-redirect rules. Use it if you need a proxy. **It isn't reliably bounded**: on Linux
+  corelibs Foundation keeps reading and discarding a cancelled response in the background (severe on
+  Swift 6.2), and on macOS Darwin can decompress part of a gzip body before the refusal takes effect
+  (233–368 MB in 3 of 9 runs against a 255 KB gzip bomb). `NIOTransport` is the bounded one.
 - **Your own `OAuth2Transport`**, set with `OAuth2HTTPOptions(transport:)`: for example one on
   AsyncHTTPClient (below), or one that routes through your proxy.
 
@@ -329,7 +345,8 @@ struct Gitea: OAuth2Provider {
 Override `authorizationParameters` for extra login-link parameters (their names are then reserved),
 `makeAuthorizationRequest(scopes:state:additionalParameters:)` to change how every login link is
 built (it's dispatched dynamically, also through `any OAuth2Provider`), and
-`validate(_:pending:)` for token checks that must pass before an exchange returns.
+`validate(_:pending:)` for token checks that must pass before an exchange returns. (The
+pre-release `validate(_:)` hook is deprecated but still called, before `validate(_:pending:)`.)
 
 ## Migrating to 2.0
 
@@ -351,6 +368,7 @@ built (it's dispatched dynamically, also through `any OAuth2Provider`), and
 | `OAuth2(clientID:clientSecret:authorizationURL:tokenURL:)` | `OAuth2(configuration:authorizationURL:tokenURL:defaultScopes:usesPKCEByDefault:)` with `URL`s |
 | `getLoginLink(redirectURL:state:scopes:) -> String` | `authorizationRequest(scopes:state:additionalParameters:) -> AuthorizationRequest` |
 | subclassing `OAuth2` (`open class`) | conform to `OAuth2Provider` and wrap an `OAuth2` (now `final`) |
+| pre-release `OAuth2Provider.validate(_ token:)` | `validate(_:pending:)`; the old method is deprecated but still called by `exchange`, before the new one |
 | `OAuth2Token` class, `webToken: [String: Any]?` | `OAuth2Token` struct; `idToken: String?` (raw, see the trust model) and `expiresIn` |
 | `OAuthUserProfile(userid:..., accessToken:, refreshToken:, loginType:)` | `try OAuthUserProfile(userid:..., loginType:, token:)`; `accessToken` and `refreshToken` are still readable |
 | `OAuth2Error` struct with `code: OAuth2ErrorCode` | `OAuth2Error` enum; the provider's code is in `.providerError(response)` / `.authorizationDenied(response)` |

@@ -17,8 +17,10 @@ public enum OAuth2Error: Error, Sendable, Equatable, CustomStringConvertible {
     case missingAuthorizationCode
     /// The callback is unusable (e.g. a `code` longer than 4 KB).
     case invalidCallback(String)
-    /// The `PendingAuthorization` doesn't belong to this client, is too old, was tampered with, or was
-    /// already used.
+    /// The `PendingAuthorization` was created by another provider or client, is older than the max age,
+    /// is inconsistent with the configuration (redirect URL, PKCE, verifier format), or was already
+    /// used by this instance. These are consistency checks, not tamper detection: the value isn't
+    /// signed, so it must be stored server-side where the client can't change it.
     case invalidPendingAuthorization(String)
     /// An error object returned by a token or API endpoint (RFC 6749 §5.2, or a provider's own shape).
     case providerError(OAuth2ErrorResponse)
@@ -31,6 +33,8 @@ public enum OAuth2Error: Error, Sendable, Equatable, CustomStringConvertible {
     case responseTooLarge(limit: Int)
     /// The request didn't complete within `OAuth2HTTPOptions.timeout`.
     case timedOut
+    /// The calling task was cancelled.
+    case cancelled
     /// A network-level failure (DNS, TLS, connection reset...).
     case network(String)
     /// The provider's profile had no user identifier. Never treat a sign-in without one as a login.
@@ -57,6 +61,7 @@ public enum OAuth2Error: Error, Sendable, Equatable, CustomStringConvertible {
         case .invalidResponse(let why): return "OAuth2: invalid response: \(why)"
         case .responseTooLarge(let limit): return "OAuth2: response larger than \(limit) bytes"
         case .timedOut: return "OAuth2: request timed out"
+        case .cancelled: return "OAuth2: request cancelled"
         case .network(let why): return "OAuth2: network error: \(why)"
         case .missingUserID: return "OAuth2: provider returned no user id"
         case .invalidIDToken(let why): return "OAuth2: invalid id_token: \(why)"

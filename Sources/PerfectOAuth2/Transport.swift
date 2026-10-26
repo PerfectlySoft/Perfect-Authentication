@@ -58,13 +58,16 @@ public protocol OAuth2Transport: Sendable {
 ///
 /// **Not memory- or traffic-bounded on Linux**, especially with Swift 6.2: after a capped or timed-out
 /// request is cancelled, corelibs Foundation keeps reading and discarding the rest of the body in the
-/// background (see the README for measurements). On macOS it is bounded, given the gzip refusal below.
+/// background (see the README for measurements). On macOS it is bounded except against compressed
+/// bodies: Darwin may decompress part of one before the refusal below takes effect. Only
+/// `NIOTransport` (or your own transport) gives hard bounds.
 ///
 /// - No cookies, cache or credential storage.
 /// - Redirects are not followed: the 3xx comes back as `OAuth2Error.httpStatus`.
 /// - `timeout` is a deadline for the whole request, not just the gap between bytes.
-/// - `Accept-Encoding: identity` is sent and any other `Content-Encoding` is refused before the body
-///   is read (Darwin would otherwise decompress before the size check).
+/// - `Accept-Encoding: identity` is sent and any other `Content-Encoding` is refused once the response
+///   head arrives. That is best-effort on Darwin: it can decompress part of the body first (seen at
+///   233–368 MB in 3 of 9 runs against a gzip bomb).
 /// - A `Content-Length` over `maximumResponseBytes` is refused before the body is read; otherwise the
 ///   call returns as soon as the received body passes the limit and the task is cancelled. On Darwin
 ///   that stops the download. On Linux, corelibs Foundation keeps reading and discarding in the
@@ -132,7 +135,7 @@ public struct URLSessionTransport: OAuth2Transport {
                 }
             }
         } onCancel: {
-            delegate.fail(.network("cancelled"))
+            delegate.fail(.cancelled)
         }
     }
 }
@@ -225,8 +228,10 @@ private final class CappedDataDelegate: NSObject, URLSessionDataDelegate, @unche
             completionHandler(.cancel)
             return
         }
-        if let encoding = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Encoding")?
-            .trimmingCharacters(in: .whitespaces).lowercased(), !encoding.isEmpty, encoding != "identity" {
+        // Repeated headers arrive joined with commas: check every element.
+        let encodings = ((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Encoding") ?? "")
+            .split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+        if let encoding = encodings.first(where: { !$0.isEmpty && $0 != "identity" }) {
             fail(.invalidResponse("compressed response refused (Content-Encoding: \(encoding.prefix(32)))"))
             completionHandler(.cancel)
             return

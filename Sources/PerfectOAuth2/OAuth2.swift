@@ -206,6 +206,12 @@ public final class OAuth2: Sendable, CustomReflectable {
 
     /// Checks the callback's `state` against `pending.state`, then exchanges the code.
     ///
+    /// Order: the state is verified first, then the pending authorization, and only then is an
+    /// `error=` callback reported. So a provider error that arrives with an expired or foreign pending
+    /// authorization throws `.invalidPendingAuthorization`, not `.authorizationDenied`: the state
+    /// (and the pending authorization it belongs to) must check out before anything in the callback
+    /// is believed.
+    ///
     /// - Throws: `OAuth2Error.authorizationDenied` if the provider sent an error,
     ///   `.stateMismatch`/`.invalidState` if the state check fails (before any network request),
     ///   `.missingAuthorizationCode`, or the errors of the token request.
@@ -357,6 +363,11 @@ public final class OAuth2: Sendable, CustomReflectable {
 }
 
 /// States already exchanged by one `OAuth2` instance, kept for the pending-authorization lifetime.
+///
+/// Best-effort: it is per process, and at `capacity` live entries it keeps only the newest half, so
+/// under a flood an older state can be accepted again within the max age. A replay still needs the
+/// victim's server-side pending authorization; deleting it from the session on completion is the
+/// real single-use guarantee.
 final class CompletedStates: @unchecked Sendable {
     // Guarded by `lock`.
     private let lock = NSLock()

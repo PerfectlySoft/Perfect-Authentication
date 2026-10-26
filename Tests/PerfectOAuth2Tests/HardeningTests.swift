@@ -286,3 +286,38 @@ extension Result where Failure == any Error {
 
 /// gzip of 1 MiB of spaces (generated with Python's gzip module).
 private let gzippedSpacesBase64 = "H4sIADCW3moC/+3BMQEAAADCoCrrn9IQvkABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHwGpwID8QAAEAA="
+
+@Suite("Provider hook compatibility and ordering")
+struct HookCompatibilityTests {
+    /// A conformer written against the pre-release API: it implements only `validate(_:)`.
+    struct LegacyProvider: OAuth2Provider {
+        let oauth2: OAuth2
+        let loginType = "legacy"
+        func validate(_ token: OAuth2Token) throws { throw OAuth2Error.invalidResponse("legacy validate ran") }
+        func fetchProfile(token: OAuth2Token) async throws -> OAuthUserProfile {
+            try OAuthUserProfile(userid: "u", loginType: loginType, token: token)
+        }
+    }
+
+    @Test func legacyValidateStillRuns() async throws {
+        let transport = StubTransport().on(tokenURL, #"{"access_token":"AT"}"#)
+        let provider = LegacyProvider(oauth2: client(transport))
+        let request = try provider.authorizationRequest()
+        await #expect(throws: OAuth2Error.invalidResponse("legacy validate ran")) {
+            try await provider.completeAuthorization(callback: callback(request), pending: request.pending)
+        }
+    }
+
+    @Test func pendingIsCheckedBeforeAnErrorCallback() async throws {
+        let oauth = client(StubTransport(), maxAge: 60)
+        let request = try oauth.authorizationRequest()
+        let expired = copy(request.pending, createdAt: Date().addingTimeInterval(-120))
+        let denied = AuthorizationCallback(code: nil, state: request.pending.state, error: OAuth2ErrorResponse(code: "access_denied"))
+        await #expect(throws: OAuth2Error.invalidPendingAuthorization("expired")) {
+            try await oauth.exchange(callback: denied, pending: expired)
+        }
+        await #expect(throws: OAuth2Error.authorizationDenied(OAuth2ErrorResponse(code: "access_denied"))) {
+            try await oauth.exchange(callback: denied, pending: request.pending)
+        }
+    }
+}

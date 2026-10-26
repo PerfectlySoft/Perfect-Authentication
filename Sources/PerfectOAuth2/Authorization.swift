@@ -71,6 +71,8 @@ public enum PKCE {
 /// It is bound to the client that created it: `exchange` refuses a pending authorization from another
 /// provider or client ID, one older than `OAuth2ClientConfiguration.pendingAuthorizationMaxAge`, one
 /// whose redirect URL isn't the configured one, or one already completed by this `OAuth2` instance.
+/// These are consistency checks, not tamper detection: it isn't signed, so a hand-built value with the
+/// right fields passes. Keep it where the client can't modify it.
 public struct PendingAuthorization: Sendable, Codable, Equatable, CustomStringConvertible, CustomReflectable {
     public let state: String
     /// The PKCE code verifier, or nil when PKCE is disabled for this provider.
