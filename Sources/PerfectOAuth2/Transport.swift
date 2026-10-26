@@ -44,8 +44,8 @@ public struct OAuth2HTTPResponse: Sendable {
     }
 }
 
-/// Sends PerfectOAuth2's HTTP requests. The default is `URLSessionTransport`; supply your own (for
-/// example one on AsyncHTTPClient) through `OAuth2HTTPOptions.transport`.
+/// Sends PerfectOAuth2's HTTP requests. The default is `NIOTransport`; `URLSessionTransport` is an
+/// opt-in, and you can supply your own through `OAuth2HTTPOptions.transport`.
 ///
 /// Implementations should not follow redirects, should enforce a deadline, and should stop reading
 /// a body past a size limit, throwing the matching `OAuth2Error`s.
@@ -53,7 +53,12 @@ public protocol OAuth2Transport: Sendable {
     func send(_ request: OAuth2HTTPRequest) async throws -> OAuth2HTTPResponse
 }
 
-/// The default transport: Foundation's URLSession, one ephemeral session per request.
+/// An opt-in transport on Foundation's URLSession, one ephemeral session per request. Use it when you
+/// need system proxy settings, which `NIOTransport` (the default) ignores.
+///
+/// **Not memory- or traffic-bounded on Linux**, especially with Swift 6.2: after a capped or timed-out
+/// request is cancelled, corelibs Foundation keeps reading and discarding the rest of the body in the
+/// background (see the README for measurements). On macOS it is bounded, given the gzip refusal below.
 ///
 /// - No cookies, cache or credential storage.
 /// - Redirects are not followed: the 3xx comes back as `OAuth2Error.httpStatus`.
@@ -69,9 +74,10 @@ public struct URLSessionTransport: OAuth2Transport {
     public let timeout: TimeInterval
     public let maximumResponseBytes: Int
 
+    /// `timeout` is clamped to 1 ms ... 1 day: corelibs URLSession traps on an infinite timeout.
     public init(timeout: TimeInterval = 30, maximumResponseBytes: Int = 1 << 20) {
-        self.timeout = timeout
-        self.maximumResponseBytes = maximumResponseBytes
+        self.timeout = timeout.isNaN ? 0.001 : min(max(timeout, 0.001), 86_400)
+        self.maximumResponseBytes = max(0, maximumResponseBytes)
     }
 
     public func send(_ request: OAuth2HTTPRequest) async throws -> OAuth2HTTPResponse {
@@ -92,7 +98,7 @@ public struct URLSessionTransport: OAuth2Transport {
         // drains earlier cancelled transfers; on the cooperative pool that starved the deadline
         // itself (a 5 s timeout fired after 75 s on Swift 6.2). A Dispatch timer and a Dispatch
         // thread for setup keep the caller's deadline honest.
-        let seconds = timeout.isNaN ? 0 : min(max(timeout, 0), 31_536_000)  // clamped: no trap on .infinity
+        let seconds = timeout  // clamped in init
         let deadline = DispatchWorkItem { delegate.fail(.timedOut) }
         DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: deadline)
         defer {

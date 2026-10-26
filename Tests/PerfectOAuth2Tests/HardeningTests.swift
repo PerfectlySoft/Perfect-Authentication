@@ -223,17 +223,17 @@ struct NitTests {
     }
 }
 
-@Suite("URLSessionTransport hardening", .serialized)
+@Suite("Transport hardening", .serialized)
 struct TransportHardeningTests {
-    private func oauth(_ server: LocalHTTPServer, timeout: TimeInterval = 10) -> OAuth2 {
+    private func oauth(_ kind: TransportKind, _ server: LocalHTTPServer, timeout: TimeInterval = 10) -> OAuth2 {
         OAuth2(
             configuration: OAuth2ClientConfiguration(clientID: "id", clientSecret: "s", redirectURL: URL(string: "https://app.test/cb")!, usePKCE: false,
-                                                     http: OAuth2HTTPOptions(timeout: timeout)),
+                                                     http: OAuth2HTTPOptions(timeout: timeout, transport: kind.make(timeout: timeout, limit: 1 << 20))),
             authorizationURL: URL(string: "https://auth.test/a")!, tokenURL: URL(string: "\(server.baseURL)/token")!
         )
     }
 
-    @Test func compressedResponsesAreRefusedAndIdentityRequested() async throws {
+    @Test(arguments: TransportKind.allCases) func compressedResponsesAreRefusedAndIdentityRequested(kind: TransportKind) async throws {
         // A real gzip stream of 1 MiB of spaces (about 1 KB compressed); never decompressed.
         let gzip = try #require(Data(base64Encoded: gzippedSpacesBase64))
         for encoding in ["gzip", "br", "deflate", " GZIP "] {
@@ -241,7 +241,7 @@ struct TransportHardeningTests {
                 .raw(head: "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Encoding: \(encoding)\r\nContent-Length: \(gzip.count)\r\nConnection: close\r\n\r\n", chunk: gzip, count: 1)
             }
             defer { server.stop() }
-            let error = await #expect(throws: OAuth2Error.self) { try await oauth(server).refresh(refreshToken: "r") }
+            let error = await #expect(throws: OAuth2Error.self) { try await oauth(kind, server).refresh(refreshToken: "r") }
             guard case .invalidResponse(let why)? = error else { Issue.record("\(String(describing: error))"); continue }
             #expect(why.hasPrefix("compressed response refused"))
             let head = try #require(server.requests.first?.head.lowercased())
@@ -251,21 +251,21 @@ struct TransportHardeningTests {
             .respond(status: 200, headers: ["Content-Encoding": "identity"], body: Data(#"{"access_token":"AT"}"#.utf8))
         }
         defer { identity.stop() }
-        #expect(try await oauth(identity).refresh(refreshToken: "r").accessToken == "AT")
+        #expect(try await oauth(kind, identity).refresh(refreshToken: "r").accessToken == "AT")
     }
 
-    @Test func infiniteTimeoutDoesNotTrap() async throws {
+    @Test(arguments: TransportKind.allCases) func infiniteTimeoutDoesNotTrap(kind: TransportKind) async throws {
         let server = try LocalHTTPServer { _ in .respond(status: 200, headers: [:], body: Data(#"{"access_token":"AT"}"#.utf8)) }
         defer { server.stop() }
         for timeout in [TimeInterval.infinity, .greatestFiniteMagnitude, .nan] {
-            _ = await Result(catching: { try await oauth(server, timeout: timeout).refresh(refreshToken: "r") })
+            _ = await Result(catching: { try await oauth(kind, server, timeout: timeout).refresh(refreshToken: "r") })
         }
     }
 
-    @Test func alreadyCancelledTaskSendsNothing() async throws {
+    @Test(arguments: TransportKind.allCases) func alreadyCancelledTaskSendsNothing(kind: TransportKind) async throws {
         let server = try LocalHTTPServer { _ in .respond(status: 200, headers: [:], body: Data(#"{"access_token":"AT"}"#.utf8)) }
         defer { server.stop() }
-        let client = oauth(server)
+        let client = oauth(kind, server)
         let task = Task {
             withUnsafeCurrentTask { $0?.cancel() }
             return try await client.refresh(refreshToken: "r")

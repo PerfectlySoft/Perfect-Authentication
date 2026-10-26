@@ -28,9 +28,13 @@ library product you import is `PerfectOAuth2`.
 - macOS 12 or later, or Linux (CI: Ubuntu 24.04 with Swift 6.2 and 6.4; macOS with Xcode 26.0.1
   and 26.6). iOS isn't a target: this is a confidential-client library for servers, and apps should
   use `ASWebAuthenticationSession` without embedding a client secret.
-- One dependency: Apple's [swift-crypto](https://github.com/apple/swift-crypto)
-  (`3.0.0..<5.0.0`), for SHA-256 (PKCE) and HMAC-SHA256 (Facebook's `appsecret_proof`). On Apple
-  platforms it uses CryptoKit. Networking is Foundation's `URLSession`.
+- Apple/SSWG dependencies only:
+  - [swift-crypto](https://github.com/apple/swift-crypto) `3.0.0..<5.0.0`, for SHA-256 (PKCE) and
+    HMAC-SHA256 (Facebook's `appsecret_proof`); on Apple platforms it uses CryptoKit;
+  - [swift-nio](https://github.com/apple/swift-nio) from 2.86.0,
+    [swift-nio-ssl](https://github.com/apple/swift-nio-ssl) from 2.31.0 and
+    [swift-asn1](https://github.com/apple/swift-asn1) from 1.2.0, for the default HTTP transport
+    (see [Transports](#transports)). The floors match Perfect-SMTP 6.0.0.
 
 ## Quick start
 
@@ -50,14 +54,15 @@ let google = Google(
 // Route 1: GET /auth/google
 func startSignIn(session: inout [String: Data]) throws -> URL {
     let request = try google.authorizationRequest()
-    // Keep the state and PKCE verifier server-side until the callback.
-    session["oauth.pending"] = try JSONEncoder().encode(request.pending)
+    // Keep the state and PKCE verifier server-side until the callback, one key per provider.
+    session["oauth.pending.google"] = try JSONEncoder().encode(request.pending)
     return request.url  // redirect the browser here
 }
 
 // Route 2: GET /auth/google/callback?code=...&state=...
 func finishSignIn(callbackURL: URL, session: inout [String: Data]) async throws -> OAuthUserProfile {
-    guard let data = session.removeValue(forKey: "oauth.pending") else {
+    // Remove it before completing, so it can only be used once.
+    guard let data = session.removeValue(forKey: "oauth.pending.google") else {
         throw OAuth2Error.stateMismatch
     }
     let pending = try JSONDecoder().decode(PendingAuthorization.self, from: data)
@@ -67,9 +72,9 @@ func finishSignIn(callbackURL: URL, session: inout [String: Data]) async throws 
 }
 ```
 
-`completeAuthorization` checks the state, exchanges the code (sending the PKCE verifier and the same
-`redirect_uri`), runs the provider's token checks, fetches the profile, and throws if anything is
-missing. Use `completeAuthorization(code:state:pending:)` if your framework hands you the query
+`completeAuthorization` checks the state and the pending authorization, exchanges the code (sending
+the PKCE verifier and the same `redirect_uri`), runs the provider's token checks, fetches the profile,
+and throws if anything is missing. Use `completeAuthorization(code:state:pending:)` if your framework hands you the query
 parameters instead of the URL.
 
 `OAuthUserProfile` has `userid`, `firstName`, `lastName`, `displayName`, `picture`, `email`,
@@ -98,17 +103,18 @@ Everything throws `OAuth2Error`:
 |------|---------|
 | `.stateMismatch`, `.invalidState` | CSRF check failed, or the stored state is unusable |
 | `.authorizationDenied(response)` | the provider redirected back with `error=` (e.g. `access_denied`) |
-| `.missingAuthorizationCode` | the callback had neither `code` nor `error` |
+| `.missingAuthorizationCode`, `.invalidCallback` | the callback had neither `code` nor `error`, or a `code` over 4 KB |
+| `.invalidPendingAuthorization` | the `PendingAuthorization` is from another provider or client, expired, tampered with, or already used |
 | `.providerError(response)` | an error body from a token or API endpoint; `response.code` is the provider's code (`invalid_grant`, `bad_verification_code`, `OAuthException`...), `response.standardCode` the RFC 6749 one if it is one |
 | `.httpStatus(Int)` | any other non-2xx, including redirects (never followed) |
-| `.invalidResponse`, `.missingUserID` | the response wasn't the JSON expected, or had no user id |
-| `.invalidIDToken`, `.restrictedDomainMismatch` | Google id_token checks |
+| `.invalidResponse`, `.missingUserID` | the response wasn't the JSON expected (including a non-Bearer `token_type` or a compressed body), or had no user id |
+| `.invalidIDToken`, `.restrictedDomainMismatch` | Google id_token and domain checks |
 | `.timedOut`, `.network`, `.responseTooLarge` | transport failures |
 | `.insecureURL`, `.invalidConfiguration` | a non-HTTPS endpoint, or a bad redirect URL / parameter |
 
 Error descriptions never include secrets: provider text is truncated, stripped of control
-characters, and has the client secret, code, verifier and tokens from the failed request replaced
-with `<redacted>`.
+characters, and has the client secret (always) and the code, verifier and tokens from the failed
+request (from 8 characters) replaced with `<redacted>`, in raw and percent-encoded forms.
 
 ## Security model
 
@@ -119,20 +125,33 @@ with `<redacted>`.
   public if you run the flow yourself.
 - **PKCE** (RFC 7636, S256), as the OAuth 2.0 Security BCP (RFC 9700) recommends for every client,
   confidential ones included. It is on by default where the provider documents support (see the
-  table) and can be forced either way with `usePKCE:` in the configuration. Keep
-  `PendingAuthorization` server-side; it holds the verifier.
-- **Redirect URI.** One fixed, registered `redirectURL`: absolute HTTPS (HTTP only to loopback hosts),
-  no fragment. It is sent unchanged on the authorization request and the exchange. 1.x appended
+  table) and can be forced either way with `usePKCE:` in the configuration. Google sends and checks an
+  OpenID Connect `nonce` instead when PKCE is turned off.
+- **Pending authorizations.** `PendingAuthorization` holds the state, the PKCE verifier and the
+  nonce, and its JSON contains them in clear: keep it in a server-side session store, not a
+  client-readable cookie. Use one session key per provider and delete it when the callback arrives
+  (as the quick start does). `exchange` also refuses one that was created by another provider or
+  client ID, is older than `pendingAuthorizationMaxAge` (default 10 minutes), carries a redirect URL
+  other than the configured one or a malformed verifier, or has already been completed by the same
+  provider instance (remembered in memory for the max age). That last check can't span processes, so
+  deleting it from the session is what makes it single-use across a cluster.
+- **Redirect URI.** One fixed, registered `redirectURL` per provider: absolute HTTPS (HTTP only to
+  `localhost`, `127.0.0.1` and `::1`), no fragment. It is sent unchanged on the authorization request and the exchange. 1.x appended
   `?session=<session token>` to it, which leaked the session token to the provider and into logs;
   2.0 doesn't, and you shouldn't put session identifiers in it either. Use a cookie-backed session.
-- **id_token trust.** An id_token is only used when it came straight from the provider's token
-  endpoint over TLS. OpenID Connect Core §3.1.3.7 lets a client skip the signature check in that case,
-  so PerfectOAuth2 does, but it checks the issuer, audience (`aud` contains your client ID, and `azp`
-  equals it when present or when there are several audiences), expiry and issue time (5 minutes'
-  leeway) and a non-empty `sub`. Google's `restrictedDomain` uses the `hd` claim of that validated
-  token, and the userinfo `sub` must match the token's. `OAuth2Token.idToken` is exposed raw: never
-  trust an id_token from anywhere else (a browser, a query string, storage) without verifying its
-  signature against the provider's keys.
+- **id_token trust.** An id_token is only used during a code exchange, when it came straight from
+  the provider's token endpoint over TLS. OpenID Connect Core §3.1.3.7 lets a client skip the
+  signature check in that case, so PerfectOAuth2 does, but it checks the issuer, audience (`aud`
+  contains your client ID, and `azp` equals it when present or when there are several audiences),
+  numeric expiry and issue time (5 minutes' leeway, at most 24 hours apart), a non-empty `sub`, and
+  the nonce when one was sent. With `restrictedDomain`, the token's `hd` claim must match.
+  `OAuth2Token.idToken` is exposed raw: never trust an id_token from anywhere else (a browser, a query
+  string, storage) without verifying its signature against the provider's keys.
+- **Profiles come from the provider's API, not from tokens.** `fetchProfile(token:)` accepts any
+  access token, including one your app stored or received from elsewhere, and trusts only the
+  provider's userinfo response for it. It never reads the token's id_token. Google's
+  `restrictedDomain` is checked there too, against userinfo's `hd`, so a token from another Google
+  client or a forged id_token can't get round it.
 - **Email.** `email` is only trustworthy when `emailVerified` is true. GitHub's profile email is never
   marked verified.
 - **Tokens on the wire.** Access tokens are sent in the `Authorization: Bearer` header, never in a URL.
@@ -140,32 +159,137 @@ with `<redacted>`.
   `URLComponents`, and every value is percent-encoded (including `+`, `&` and `=`).
 - **HTTP limits.** Each request has a whole-request deadline (`OAuth2HTTPOptions.timeout`, default
   30 s), a response cap (`maximumResponseBytes`, default 1 MiB, checked against `Content-Length` and
-  while streaming), no redirects, no cookies or cache, and HTTPS only (HTTP to loopback for testing).
-  Salesforce's identity URL must be HTTPS on a Salesforce host before the token is sent to it.
+  while reading), no redirects, no cookies or cache, `Accept-Encoding: identity` with any other
+  `Content-Encoding` refused before the body is read, and HTTPS only (HTTP to loopback for testing).
+  With the default `NIOTransport` these are hard bounds on every platform: reading stops and the
+  connection closes the moment one is hit. Only `token_type` Bearer is accepted.
+- **TLS.** The default transport verifies the certificate chain against the system trust store and
+  the host name (with SNI), and for a host name also requires a matching DNS subjectAltName, so a
+  certificate that only names an IP address is refused (NIOSSL alone accepts an IP SAN equal to the
+  dialed address). Nothing is written to the connection until the handshake and that check pass, so
+  a server whose certificate is refused never sees the request or the client secret in it. Salesforce's
+  identity URL must be HTTPS on the login host or an allowed suffix (`identityHostSuffixes`) before
+  the token is sent to it.
 - **No secrets in output.** `description`, `debugDescription`, `dump` and `Mirror` of
-  `OAuth2ClientConfiguration`, `OAuth2Token`, `OAuthUserProfile`, `PendingAuthorization` and
-  `OAuth2HTTPRequest` show `<redacted>` for secrets, tokens, state and verifiers.
+  `OAuth2ClientConfiguration`, `OAuth2Token`, `OAuthUserProfile`, `PendingAuthorization`,
+  `AuthorizationRequest`, `AuthorizationCallback` and `OAuth2HTTPRequest` show `<redacted>` for
+  secrets, tokens, codes, state, nonces and verifiers. (`Codable` encoding of `PendingAuthorization`
+  is for storage and isn't redacted.)
 
-### Response limits on Linux
+## Transports
 
-On Darwin, cancelling at the size limit stops the download. On Linux, the call also returns as soon
-as the limit is passed, but corelibs Foundation can go on reading and discarding the rest of the body
-in the background for a while. In testing against an endless local body, each call returned within
-0.03 s of reaching the cap and peak memory stayed under 180 MB, though the background read consumed
-up to 2 GB of loopback traffic. Corelibs FoundationNetworking also leaks about 76 bytes per request
-(seen with LeakSanitizer), which is negligible at sign-in volumes. Provider responses are small and come from the providers' own HTTPS endpoints, so
-this only matters if one of them is compromised. If you need a hard bound, plug in your own
-transport (for example on AsyncHTTPClient) through `OAuth2HTTPOptions(transport:)`.
+- **`NIOTransport` (default).** A small HTTP/1.1 client on SwiftNIO, one connection per request,
+  on `MultiThreadedEventLoopGroup.singleton` (nothing to shut down; pass `group:` to use your own).
+  Hard size, time and redirect bounds as above, on every platform. Use
+  `NIOTransport(tlsConfiguration:)` to trust a private CA. **It ignores proxy settings**: URLSession
+  honours the system and environment proxies, this client doesn't.
+- **`URLSessionTransport` (opt-in).** Foundation's URLSession, with the same deadline, cap, identity
+  encoding and no-redirect rules. Use it if you need a proxy. It is bounded on macOS, but **not on
+  Linux**: corelibs Foundation keeps reading and discarding a cancelled response in the background,
+  and on Swift 6.2 that is severe.
+- **Your own `OAuth2Transport`**, set with `OAuth2HTTPOptions(transport:)`: for example one on
+  AsyncHTTPClient (below), or one that routes through your proxy.
+
+```swift
+let google = Google(configuration: OAuth2ClientConfiguration(
+    clientID: "your-client-id", clientSecret: "your-client-secret",
+    redirectURL: URL(string: "https://example.com/auth/google/callback")!,
+    http: OAuth2HTTPOptions(transport: URLSessionTransport(timeout: 30))  // opt in to URLSession
+))
+```
+
+50 back-to-back calls against a local server that sends an endless body, each capped at 16 KiB
+(5 s deadline):
+
+| Transport | Platform | Wall time | Read over loopback | Peak RSS | Notes |
+|-----------|----------|-----------|--------------------|----------|-------|
+| `NIOTransport` | macOS 27 | 0.24 s | 45 MB | 59 MB | descriptors unchanged |
+| `NIOTransport` | Swift 6.2, linux/arm64 | 0.44 s | 310 MB | 140 MB | descriptors unchanged |
+| `NIOTransport` | Swift 6.2, linux/amd64 (emulated) | NIO_62_AMD64 | | | |
+| `NIOTransport` | Swift 6.4, linux/arm64 | NIO_64_ARM64 | | | |
+| `NIOTransport` | Swift 6.4, linux/amd64 (emulated) | NIO_64_AMD64 | | | |
+| `URLSessionTransport` | Swift 6.2, linux/arm64 | 44.9 s | 37.9 GB | 487 MB | 6 calls ended only at the 5 s deadline; 35 more descriptors open afterwards |
+| `URLSessionTransport` | Swift 6.2, linux/amd64 (emulated) | 127 s | 102 GB | 920 MB | 16 calls ended only at the deadline; 43 more descriptors open afterwards |
+| `URLSessionTransport` | Swift 6.4, linux/arm64 | 0.19 s | 365 MB | 123 MB | |
+
+("Read over loopback" is what the server managed to send; on the NIO rows most of it is kernel
+socket buffers. The NIO rows used TLS from a local test CA, the URLSession rows plain HTTP to a
+socket server.) The endpoints are the providers' own fixed TLS hosts, so this needs a compromised or
+impersonated provider to trigger, but the default no longer depends on that. Corelibs
+FoundationNetworking also leaks about 76 bytes per URLSession request (seen with LeakSanitizer).
+
+A transport on [AsyncHTTPClient](https://github.com/swift-server/async-http-client), checked by
+building and running it against local endless, slow, gzip and redirecting servers:
+
+```swift
+import AsyncHTTPClient
+import Foundation
+import NIOCore
+import PerfectOAuth2
+
+/// Whole-request deadline, streamed size cap, no redirects, no compression.
+struct AsyncHTTPClientTransport: OAuth2Transport {
+    let client: HTTPClient  // configured with redirectConfiguration: .disallow
+    var timeout: TimeInterval = 30
+    var maximumResponseBytes = 1 << 20
+
+    func send(_ request: OAuth2HTTPRequest) async throws -> OAuth2HTTPResponse {
+        // execute(timeout:) only bounds the response head, so race the whole exchange, body
+        // included, against the deadline.
+        try await withThrowingTaskGroup(of: OAuth2HTTPResponse.self) { group in
+            group.addTask { try await perform(request) }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw OAuth2Error.timedOut
+            }
+            defer { group.cancelAll() }
+            guard let first = try await group.next() else { throw OAuth2Error.timedOut }
+            return first
+        }
+    }
+
+    private func perform(_ request: OAuth2HTTPRequest) async throws -> OAuth2HTTPResponse {
+        var outgoing = HTTPClientRequest(url: request.url.absoluteString)
+        outgoing.method = request.method == .post ? .POST : .GET
+        for (name, value) in request.headers { outgoing.headers.replaceOrAdd(name: name, value: value) }
+        outgoing.headers.replaceOrAdd(name: "Accept-Encoding", value: "identity")
+        if let body = request.body { outgoing.body = .bytes(ByteBuffer(bytes: body)) }
+        do {
+            let response = try await client.execute(outgoing, timeout: .seconds(Int64(timeout.rounded(.up))))
+            if let encoding = response.headers.first(name: "Content-Encoding"), encoding.lowercased() != "identity" {
+                throw OAuth2Error.invalidResponse("compressed response refused")
+            }
+            let body = try await response.body.collect(upTo: maximumResponseBytes)
+            return OAuth2HTTPResponse(status: Int(response.status.code), body: Data(buffer: body))
+        } catch is NIOTooManyBytesError {
+            throw OAuth2Error.responseTooLarge(limit: maximumResponseBytes)
+        } catch let error as HTTPClientError where error == .deadlineExceeded {
+            throw OAuth2Error.timedOut
+        }
+    }
+}
+
+// One client for the process, with redirects off (decompression is off by default).
+let httpClient = HTTPClient(
+    eventLoopGroupProvider: .singleton,
+    configuration: HTTPClient.Configuration(redirectConfiguration: .disallow)
+)
+let google = Google(configuration: OAuth2ClientConfiguration(
+    clientID: "your-client-id", clientSecret: "your-client-secret",
+    redirectURL: URL(string: "https://example.com/auth/google/callback")!,
+    http: OAuth2HTTPOptions(transport: AsyncHTTPClientTransport(client: httpClient))
+))
+```
 
 ## Providers
 
 | Provider | Type | Default scopes | PKCE default | Profile endpoint | Notes |
 |----------|------|----------------|--------------|------------------|-------|
-| Google | `Google(configuration:restrictedDomain:)` | `openid profile` (`openid` always added) | on | OIDC `openidconnect.googleapis.com/v1/userinfo` | id_token validated on every exchange; `restrictedDomain` sends `hd` and enforces the token's `hd` claim; `authorizationRequest(offlineAccess:)` |
+| Google | `Google(configuration:restrictedDomain:)` | `openid profile` (`openid` always added) | on (nonce when off) | OIDC `openidconnect.googleapis.com/v1/userinfo` | id_token validated on every exchange; `restrictedDomain` sends `hd` and enforces both the token's `hd` claim and userinfo's `hd`; `authorizationRequest(offlineAccess:)` |
 | GitHub | `GitHub(configuration:)` | `read:user` | on | `api.github.com/user` | GitHub added PKCE in 2025. Errors arrive as HTTP 200 with `error`. OAuth apps don't issue refresh tokens unless token expiration is enabled |
 | Facebook | `Facebook(configuration:graphAPIVersion:)` | none | off | Graph `/me` | Graph `v23.0` by default; sends `appsecret_proof`. No refresh tokens |
 | LinkedIn | `LinkedIn(configuration:)` | `openid profile` | off | OIDC `api.linkedin.com/v2/userinfo` | LinkedIn documents PKCE only for approved native clients. Add `email` for the address |
-| Salesforce | `try Salesforce(configuration:loginHost:)` | `id` | on | identity URL from the token response | `loginHost` for sandboxes (`test.salesforce.com`) and My Domain. Add `refresh_token` for refresh tokens |
+| Salesforce | `try Salesforce(configuration:loginHost:identityHostSuffixes:)` | `id` | on | identity URL from the token response | `loginHost` for sandboxes (`test.salesforce.com`) and My Domain. Identity hosts default to `.salesforce.com`/`.salesforce.mil`; other clouds (Government Cloud Plus, China) aren't verified, add their suffixes. Add `refresh_token` for refresh tokens |
 | Slack | `Slack(configuration:)` | `openid profile` | off | OIDC `slack.com/api/openid.connect.userInfo` | Sign in with Slack (OIDC). User ids are per workspace: combine with `raw["https://slack.com/team_id"]` |
 
 PKCE defaults are conservative: on where the provider documents S256 support for web apps with a
@@ -202,8 +326,10 @@ struct Gitea: OAuth2Provider {
 }
 ```
 
-Override `authorizationParameters` for extra login-link parameters, and `validate(_:)` for token
-checks that must pass before an exchange returns.
+Override `authorizationParameters` for extra login-link parameters (their names are then reserved),
+`makeAuthorizationRequest(scopes:state:additionalParameters:)` to change how every login link is
+built (it's dispatched dynamically, also through `any OAuth2Provider`), and
+`validate(_:pending:)` for token checks that must pass before an exchange returns.
 
 ## Migrating to 2.0
 
@@ -220,7 +346,7 @@ checks that must pass before an exchange returns.
 | `Google.loginURL(state: csrf, sessionToken:)` (static or instance) | `let request = try google.authorizationRequest()`; redirect to `request.url` and store `request.pending` |
 | `Google.loginURL(..., offlineAccess: true)` | `google.authorizationRequest(offlineAccess: true)` |
 | `Google.processAuthResponse(code:state:sessionCSRF:sessionToken:)` | `try await google.completeAuthorization(callbackURL:pending:)` or `completeAuthorization(code:state:pending:)` |
-| `provider.exchange(code:state:sessionToken:)` / `exchange(code:state:redirectURL:)` | `try await provider.exchange(callback: AuthorizationCallback(url:), pending:)` |
+| `provider.exchange(code:state:sessionToken:)` / `exchange(code:state:redirectURL:)` / `exchange(authorizationCode: AuthorizationCode(code:redirectURL:))` | `try await provider.exchange(callback: AuthorizationCallback(url:), pending:)` |
 | `provider.getUserData(accessToken) -> [String: Any]` | `try await provider.fetchProfile(token:) -> OAuthUserProfile` (fields typed, the rest in `raw: JSONValue`) |
 | `OAuth2(clientID:clientSecret:authorizationURL:tokenURL:)` | `OAuth2(configuration:authorizationURL:tokenURL:defaultScopes:usesPKCEByDefault:)` with `URL`s |
 | `getLoginLink(redirectURL:state:scopes:) -> String` | `authorizationRequest(scopes:state:additionalParameters:) -> AuthorizationRequest` |
@@ -237,6 +363,9 @@ Behaviour changes to check:
 - **No more `?session=` on the redirect URI.** Register the bare `redirectURL` with the provider,
   and keep `PendingAuthorization` in a cookie-backed server-side session.
 - **State must be 32+ characters.** Let `authorizationRequest()` generate it.
+- **Pending authorizations expire** after 10 minutes (`pendingAuthorizationMaxAge`) and only work
+  with the provider, client ID and redirect URL that created them.
+- **Only Bearer tokens** are accepted, and compressed responses are refused.
 - **Empty or missing user ids throw** `OAuth2Error.missingUserID` instead of signing the user in as `""`.
 - **HTTP failures throw.** 1.x turned network errors, HTTP errors and non-JSON into an empty
   dictionary, so they surfaced as missing fields (or a profile with empty fields).
@@ -254,8 +383,9 @@ swift build --build-tests -Xswiftc -warnings-as-errors
 swift test
 ```
 
-The tests are hermetic: provider flows run against an in-memory transport, and `URLSessionTransport`
-against a local socket server on 127.0.0.1. Nothing contacts a real provider.
+The tests are hermetic: provider flows run against an in-memory transport, both built-in transports
+against local servers on 127.0.0.1 (a socket server over HTTP, and a SwiftNIO server with TLS from a
+throwaway test CA for the certificate checks). Nothing contacts a real provider.
 
 The pre-Swift-6 code (the Swift 3 `OAuth2` target and the `LocalAuthentication` username/password
 system) is on the [`legacy`](https://github.com/PerfectlySoft/Perfect-Authentication/tree/legacy)

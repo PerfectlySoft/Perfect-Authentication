@@ -60,7 +60,8 @@ public struct OAuth2HTTPOptions: Sendable {
     public var timeout: TimeInterval
     /// Largest response body accepted. Token and profile responses are a few KB.
     public var maximumResponseBytes: Int
-    /// Replaces the default `URLSessionTransport(timeout:maximumResponseBytes:)`.
+    /// Replaces the default `NIOTransport(timeout:maximumResponseBytes:)`. `URLSessionTransport` is
+    /// the opt-in alternative (it honours system proxies but isn't memory-bounded on Linux).
     public var transport: (any OAuth2Transport)?
     public var userAgent: String
 
@@ -109,7 +110,7 @@ public final class OAuth2: Sendable {
         self.tokenURL = tokenURL
         self.defaultScopes = defaultScopes
         self.usesPKCE = configuration.usePKCE ?? usesPKCEByDefault
-        self.transport = configuration.http.transport ?? URLSessionTransport(
+        self.transport = configuration.http.transport ?? NIOTransport(
             timeout: configuration.http.timeout,
             maximumResponseBytes: configuration.http.maximumResponseBytes
         )
