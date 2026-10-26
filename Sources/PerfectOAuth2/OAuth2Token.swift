@@ -1,68 +1,112 @@
 import Foundation
 
-public class OAuth2Token: @unchecked Sendable {
+/// A token endpoint response (RFC 6749 §5.1).
+///
+/// `description`, `debugDescription`, `dump` and `Mirror` hide the access, refresh and id tokens.
+public struct OAuth2Token: Sendable, Equatable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public let accessToken: String
-    public let refreshToken: String?
+    /// `token_type` as sent (case-insensitively `bearer`; anything else is refused), `Bearer` when
+    /// the provider omits it.
+    public let tokenType: String
+    public var refreshToken: String? { refreshTokenStorage }
+    private var refreshTokenStorage: String?
+    /// `expires_in` in seconds, accepted as a JSON number or a numeric string.
+    public let expiresIn: Int?
+    /// When the access token expires: the time the response was parsed plus `expiresIn`.
     public let expiration: Date?
-    public let tokenType: String?
-    public let instanceURL: String?
-    public let idURL: String?
+    /// Granted scopes. RFC 6749 says space-delimited; GitHub and Slack use commas. Both are split.
     public let scope: [String]?
-    public let webToken: [String: Any]?
+    /// The raw OpenID Connect id_token, if any. It is *not* validated here; see the README's trust
+    /// model before relying on any claim in it.
+    public let idToken: String?
+    /// Salesforce: `instance_url`.
+    public let instanceURL: String?
+    /// Salesforce: `id`, the identity URL.
+    public let idURL: String?
 
     public init(
         accessToken: String,
-        tokenType: String,
+        tokenType: String = "Bearer",
+        refreshToken: String? = nil,
+        expiresIn: Int? = nil,
+        scope: [String]? = nil,
+        idToken: String? = nil,
         instanceURL: String? = nil,
         idURL: String? = nil,
-        expiresIn: Int? = nil,
-        refreshToken: String? = nil,
-        scope: [String]? = nil,
-        webToken: [String: Any]? = nil
+        now: Date = Date()
     ) {
         self.accessToken = accessToken
         self.tokenType = tokenType
-        self.refreshToken = refreshToken
-        self.expiration = expiresIn.map { Date(timeIntervalSinceNow: Double($0)) }
+        self.refreshTokenStorage = refreshToken
+        self.expiresIn = expiresIn
+        self.expiration = expiresIn.map { now.addingTimeInterval(TimeInterval($0)) }
         self.scope = scope
-        self.webToken = webToken
+        self.idToken = idToken
         self.instanceURL = instanceURL
         self.idURL = idURL
     }
 
-    public convenience init?(json: [String: Any]) {
-        guard let accessToken = json["access_token"] as? String else { return nil }
-        let tokenType = json["token_type"] as? String ?? "Bearer"
-        let instanceURL = json["instance_url"] as? String
-        let idURL = json["id"] as? String
-        let expiresIn = json["expires_in"] as? Int
-        let refreshToken = json["refresh_token"] as? String
-        let scope = (json["scope"] as? String)?.components(separatedBy: " ")
-        let webToken = OAuth2Token.decodeWebToken(json: json)
+    /// Parses a token response. Throws `OAuth2Error.invalidResponse` without a non-empty `access_token`.
+    init(json: JSONValue, now: Date = Date()) throws {
+        guard let accessToken = json["access_token"]?.stringValue, !accessToken.isEmpty else {
+            throw OAuth2Error.invalidResponse("token response has no access_token")
+        }
+        var expiresIn: Int?
+        if let value = json["expires_in"]?.int64Value, value >= 0, value <= Int64(Int32.max) {
+            expiresIn = Int(value)
+        }
+        let scope = json["scope"]?.stringValue.map {
+            $0.split(whereSeparator: { $0 == " " || $0 == "," }).map(String.init)
+        }
+        // Only Bearer tokens are supported (RFC 6750): a MAC or DPoP token sent as Bearer would fail
+        // or be misused. A missing or empty token_type is treated as Bearer.
+        let tokenType = json["token_type"]?.stringValue
+        if let tokenType, !tokenType.isEmpty, tokenType.lowercased() != "bearer" {
+            throw OAuth2Error.invalidResponse("unsupported token_type")
+        }
         self.init(
             accessToken: accessToken,
-            tokenType: tokenType,
-            instanceURL: instanceURL,
-            idURL: idURL,
+            tokenType: (tokenType?.isEmpty == false ? tokenType : nil) ?? "Bearer",
+            refreshToken: json["refresh_token"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
             expiresIn: expiresIn,
-            refreshToken: refreshToken,
             scope: scope,
-            webToken: webToken
+            idToken: json["id_token"]?.stringValue,
+            instanceURL: json["instance_url"]?.stringValue,
+            idURL: json["id"]?.stringValue,
+            now: now
         )
     }
 
-    private static func decodeWebToken(json: [String: Any]) -> [String: Any]? {
-        guard let id = json["id_token"] as? String else { return nil }
-        let parts = id.components(separatedBy: ".")
-        guard parts.count >= 2 else { return nil }
-        var content = parts[1]
-        let padlen = (4 - content.count % 4) % 4
-        content += String(repeating: "=", count: padlen)
-        guard let data = Data(base64Encoded: content),
-              let str = String(data: data, encoding: .utf8),
-              let jsonData = str.data(using: .utf8),
-              let decoded = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
-        else { return nil }
-        return decoded
+    /// The same token with `refreshToken` replaced (the refresh grant keeps the old refresh token
+    /// when the provider doesn't rotate it).
+    func replacingRefreshToken(_ refreshToken: String?) -> OAuth2Token {
+        var copy = self
+        copy.refreshTokenStorage = refreshToken
+        return copy
+    }
+
+    public var description: String {
+        var parts = ["accessToken: <redacted>", "tokenType: \(tokenType)"]
+        parts.append("refreshToken: \(refreshToken == nil ? "nil" : "<redacted>")")
+        if let expiration { parts.append("expiration: \(expiration)") }
+        if let scope { parts.append("scope: \(scope)") }
+        if idToken != nil { parts.append("idToken: <redacted>") }
+        return "OAuth2Token(\(parts.joined(separator: ", ")))"
+    }
+
+    public var debugDescription: String { description }
+
+    public var customMirror: Mirror {
+        Mirror(self, children: [
+            "accessToken": "<redacted>",
+            "tokenType": tokenType,
+            "refreshToken": refreshToken == nil ? "nil" : "<redacted>",
+            "expiresIn": expiresIn as Any,
+            "expiration": expiration as Any,
+            "scope": scope as Any,
+            "idToken": idToken == nil ? "nil" : "<redacted>",
+            "instanceURL": instanceURL as Any,
+            "idURL": idURL as Any,
+        ], displayStyle: .struct)
     }
 }

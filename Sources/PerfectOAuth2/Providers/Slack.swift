@@ -1,69 +1,46 @@
 import Foundation
 
-public struct SlackConfig {
-    nonisolated(unsafe) public static var appid = ""
-    nonisolated(unsafe) public static var secret = ""
-    nonisolated(unsafe) public static var endpointAfterAuth = ""
-    nonisolated(unsafe) public static var redirectAfterAuth = ""
-    public init() {}
-}
+/// Sign in with Slack (OpenID Connect).
+///
+/// - Endpoints: `slack.com/openid/connect/authorize`, `slack.com/api/openid.connect.token`, and
+///   `slack.com/api/openid.connect.userInfo`. 1.x used the legacy `oauth/authorize` +
+///   `users.identity` flow with `identity.basic` scopes, which only classic Slack apps can use.
+/// - Default scopes `openid profile`; add `email` for the address.
+/// - PKCE off by default (Slack's PKCE support is recent and not documented for this flow; enable it
+///   with `usePKCE: true` if your app supports it).
+/// - Slack errors come back as HTTP 200 `{"ok": false, "error": "..."}`; they surface as
+///   `OAuth2Error.providerError`.
+/// - Slack user ids are scoped to a workspace: key accounts on `userid` together with the team id in
+///   `raw["https://slack.com/team_id"]` if users can come from several workspaces.
+public final class Slack: OAuth2Provider {
+    public let oauth2: OAuth2
+    public let loginType = "slack"
 
-public class Slack: OAuth2, @unchecked Sendable {
-    public init(clientID: String, clientSecret: String) {
-        super.init(
-            clientID: clientID,
-            clientSecret: clientSecret,
-            authorizationURL: "https://slack.com/oauth/authorize",
-            tokenURL: "https://slack.com/api/oauth.access"
+    static let userInfoURL = URL(string: "https://slack.com/api/openid.connect.userInfo")!
+
+    public init(configuration: OAuth2ClientConfiguration) {
+        oauth2 = OAuth2(
+            configuration: configuration,
+            authorizationURL: URL(string: "https://slack.com/openid/connect/authorize")!,
+            tokenURL: URL(string: "https://slack.com/api/openid.connect.token")!,
+            defaultScopes: ["openid", "profile"],
+            usesPKCEByDefault: false
         )
     }
 
-    public func getUserData(_ accessToken: String) async -> [String: Any] {
-        let url = "https://slack.com/api/users.identity?token=\(accessToken)"
-        let data = await makeRequest(.get, url)
-        var out = [String: Any]()
-        out["userid"] = digIntoDictionary(mineFor: ["user", "id"], data: data) as? String ?? ""
-        let fullName = digIntoDictionary(mineFor: ["user", "name"], data: data) as? String ?? ""
-        let parts = fullName.components(separatedBy: " ")
-        if !parts.isEmpty { out["first_name"] = parts.first }
-        if parts.count > 1 { out["last_name"] = parts.last }
-        out["picture"] = digIntoDictionary(mineFor: ["user", "image_192"], data: data) as? String ?? ""
-        return out
-    }
-
-    public func loginURL(state: String, sessionToken: String, scopes: [String] = ["identity.basic", "identity.avatar"]) -> String {
-        let redirectURL = "\(SlackConfig.endpointAfterAuth)?session=\(sessionToken)"
-        return getLoginLink(redirectURL: redirectURL, state: state, scopes: scopes)
-    }
-
-    public func exchange(code: String, state: String, sessionToken: String) async throws -> OAuth2Token {
-        let redirectURL = "\(SlackConfig.endpointAfterAuth)?session=\(sessionToken)"
-        return try await exchange(code: code, state: state, redirectURL: redirectURL)
-    }
-
-    public static func loginURL(state: String, sessionToken: String, scopes: [String] = ["identity.basic", "identity.avatar"]) -> String {
-        Slack(clientID: SlackConfig.appid, clientSecret: SlackConfig.secret)
-            .loginURL(state: state, sessionToken: sessionToken, scopes: scopes)
-    }
-
-    public static func processAuthResponse(
-        code: String,
-        state: String,
-        sessionCSRF: String,
-        sessionToken: String
-    ) async throws -> OAuthUserProfile {
-        guard state == sessionCSRF else { throw OAuth2Error(code: .unsupportedResponseType) }
-        let provider = Slack(clientID: SlackConfig.appid, clientSecret: SlackConfig.secret)
-        let token = try await provider.exchange(code: code, state: state, sessionToken: sessionToken)
-        let userdata = await provider.getUserData(token.accessToken)
-        return OAuthUserProfile(
-            userid: userdata["userid"] as? String ?? "",
-            firstName: userdata["first_name"] as? String,
-            lastName: userdata["last_name"] as? String,
-            picture: userdata["picture"] as? String,
-            accessToken: token.accessToken,
-            refreshToken: token.refreshToken,
-            loginType: "slack"
+    public func fetchProfile(token: OAuth2Token) async throws -> OAuthUserProfile {
+        let info = try await oauth2.getJSON(Self.userInfoURL, accessToken: token.accessToken)
+        return try OAuthUserProfile(
+            userid: info["sub"]?.stringValue ?? info["https://slack.com/user_id"]?.stringValue,
+            firstName: info["given_name"]?.stringValue,
+            lastName: info["family_name"]?.stringValue,
+            displayName: info["name"]?.stringValue,
+            picture: info["picture"]?.stringValue,
+            email: info["email"]?.stringValue,
+            emailVerified: info["email_verified"]?.boolValue == true,
+            loginType: loginType,
+            token: token,
+            raw: info
         )
     }
 }
