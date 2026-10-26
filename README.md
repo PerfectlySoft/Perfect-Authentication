@@ -203,18 +203,18 @@ let google = Google(configuration: OAuth2ClientConfiguration(
 
 | Transport | Platform | Wall time | Read over loopback | Peak RSS | Notes |
 |-----------|----------|-----------|--------------------|----------|-------|
-| `NIOTransport` | macOS 27 | 0.24 s | 45 MB | 59 MB | descriptors unchanged |
-| `NIOTransport` | Swift 6.2, linux/arm64 | 0.44 s | 310 MB | 140 MB | descriptors unchanged |
-| `NIOTransport` | Swift 6.2, linux/amd64 (emulated) | NIO_62_AMD64 | | | |
-| `NIOTransport` | Swift 6.4, linux/arm64 | NIO_64_ARM64 | | | |
-| `NIOTransport` | Swift 6.4, linux/amd64 (emulated) | NIO_64_AMD64 | | | |
+| `NIOTransport` | macOS 27 | 0.18 s | 44 MB | 44 MB | descriptors unchanged |
+| `NIOTransport` | Swift 6.2, linux/arm64 | 0.19 s | 136 MB | 141 MB | descriptors unchanged |
+| `NIOTransport` | Swift 6.2, linux/amd64 (emulated) | 0.25 s | 71 MB | 87 MB | descriptors unchanged |
+| `NIOTransport` | Swift 6.4, linux/arm64 | 0.20 s | 154 MB | 125 MB | descriptors unchanged |
+| `NIOTransport` | Swift 6.4, linux/amd64 (emulated) | 0.24 s | 69 MB | 82 MB | descriptors unchanged |
 | `URLSessionTransport` | Swift 6.2, linux/arm64 | 44.9 s | 37.9 GB | 487 MB | 6 calls ended only at the 5 s deadline; 35 more descriptors open afterwards |
 | `URLSessionTransport` | Swift 6.2, linux/amd64 (emulated) | 127 s | 102 GB | 920 MB | 16 calls ended only at the deadline; 43 more descriptors open afterwards |
 | `URLSessionTransport` | Swift 6.4, linux/arm64 | 0.19 s | 365 MB | 123 MB | |
 
-("Read over loopback" is what the server managed to send; on the NIO rows most of it is kernel
-socket buffers. The NIO rows used TLS from a local test CA, the URLSession rows plain HTTP to a
-socket server.) The endpoints are the providers' own fixed TLS hosts, so this needs a compromised or
+("Read over loopback" is what the server managed to write before the connection closed, mostly
+into kernel socket buffers on the NIO rows; peak RSS is the whole test process. The NIO rows used
+TLS from a local test CA, the URLSession rows plain HTTP to a socket server.) The endpoints are the providers' own fixed TLS hosts, so this needs a compromised or
 impersonated provider to trigger, but the default no longer depends on that. Corelibs
 FoundationNetworking also leaks about 76 bytes per URLSession request (seen with LeakSanitizer).
 
